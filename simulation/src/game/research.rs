@@ -15,7 +15,7 @@ impl Game {
     }
 
     /// Start initial research phase (generation 1)
-    /// Deals corporation cards and sets up selection
+    /// Deals corporation cards and prelude cards (if enabled) and sets up selection
     fn start_initial_research_phase(&mut self) -> Result<(), String> {
         // Deal corporation cards to each player (typically 2-3 cards)
         // For now, use placeholder card IDs
@@ -25,6 +25,17 @@ impl Game {
             player.dealt_corporation_cards = (0..2)
                 .map(|i| format!("corporation_card_{i}"))
                 .collect();
+        }
+
+        // Deal prelude cards if prelude expansion is enabled
+        if self.prelude {
+            // Deal 4 prelude cards to each player
+            // TODO: Integrate with actual prelude deck when implemented
+            for player in &mut self.players {
+                player.dealt_prelude_cards = (0..4)
+                    .map(|i| format!("prelude_card_{i}"))
+                    .collect();
+            }
         }
 
         Ok(())
@@ -86,6 +97,7 @@ impl Game {
 
     /// Process prelude selection for a player
     /// Returns error if selection is invalid
+    /// According to official rules: 4 preludes are dealt, player selects 2 (no cost), remaining 2 are discarded
     pub fn select_preludes(
         &mut self,
         player_id: &PlayerId,
@@ -103,18 +115,22 @@ impl Game {
             .get_player_mut(player_id)
             .ok_or_else(|| format!("Player {player_id} not found"))?;
 
-        // Validate preludes are in dealt cards
-        // For initial research, preludes come from drafted preludes
-        // For now, check if they're in cards_in_hand (where drafted preludes would be)
-        // TODO: Track prelude cards separately when prelude system is implemented
+        // Validate preludes are in dealt prelude cards
         for prelude_id in &prelude_ids {
-            if !player.cards_in_hand.contains(prelude_id) {
-                return Err(format!("Prelude {prelude_id} not available"));
+            if !player.dealt_prelude_cards.contains(prelude_id) {
+                return Err(format!("Prelude {prelude_id} not in dealt prelude cards"));
             }
         }
 
         // Set selected preludes
-        player.selected_preludes = prelude_ids;
+        player.selected_preludes = prelude_ids.clone();
+
+        // Discard the remaining 2 preludes (not selected)
+        // Remove selected preludes from dealt_prelude_cards, leaving only unselected ones
+        player.dealt_prelude_cards.retain(|p| !prelude_ids.contains(p));
+
+        // Note: Prelude cards do NOT cost anything to keep (unlike project cards)
+        // The remaining 2 preludes are discarded (already removed from dealt_prelude_cards)
 
         Ok(())
     }
@@ -296,24 +312,33 @@ mod tests {
             false, false, false, true, false, false, false, // prelude enabled
         );
 
-        // Add prelude cards to hand (simulating drafted preludes)
-        game.players[0].cards_in_hand = vec![
-            "prelude1".to_string(),
-            "prelude2".to_string(),
-            "prelude3".to_string(),
-            "prelude4".to_string(),
-        ];
+        // Start research phase to deal preludes
+        game.start_research_phase().unwrap();
+
+        // Should have 4 dealt prelude cards
+        assert_eq!(game.players[0].dealt_prelude_cards.len(), 4);
+
+        let prelude1 = game.players[0].dealt_prelude_cards[0].clone();
+        let prelude2 = game.players[0].dealt_prelude_cards[1].clone();
+        let prelude3 = game.players[0].dealt_prelude_cards[2].clone();
+        let prelude4 = game.players[0].dealt_prelude_cards[3].clone();
 
         // Select 2 preludes
         game.select_preludes(
             &"p1".to_string(),
-            vec!["prelude1".to_string(), "prelude2".to_string()],
+            vec![prelude1.clone(), prelude2.clone()],
         )
         .unwrap();
 
+        // Should have 2 selected preludes
         assert_eq!(game.players[0].selected_preludes.len(), 2);
-        assert!(game.players[0].selected_preludes.contains(&"prelude1".to_string()));
-        assert!(game.players[0].selected_preludes.contains(&"prelude2".to_string()));
+        assert!(game.players[0].selected_preludes.contains(&prelude1));
+        assert!(game.players[0].selected_preludes.contains(&prelude2));
+
+        // Remaining 2 preludes should be discarded (removed from dealt_prelude_cards)
+        assert_eq!(game.players[0].dealt_prelude_cards.len(), 2);
+        assert!(game.players[0].dealt_prelude_cards.contains(&prelude3));
+        assert!(game.players[0].dealt_prelude_cards.contains(&prelude4));
     }
 
     #[test]
@@ -426,25 +451,23 @@ mod tests {
             false, false, false, true, false, false, false, // prelude enabled
         );
 
-        // Start initial research phase
+        // Start initial research phase (deals 4 preludes)
         game.start_research_phase().unwrap();
 
-        // Add prelude cards
-        game.players[0].cards_in_hand = vec![
-            "prelude1".to_string(),
-            "prelude2".to_string(),
-            "prelude3".to_string(),
-            "prelude4".to_string(),
-        ];
+        // Should have 4 dealt prelude cards
+        assert_eq!(game.players[0].dealt_prelude_cards.len(), 4);
+
+        let prelude1 = game.players[0].dealt_prelude_cards[0].clone();
+        let prelude2 = game.players[0].dealt_prelude_cards[1].clone();
 
         // Select corporation
         let corp_id = game.players[0].dealt_corporation_cards[0].clone();
         game.select_corporation(&"p1".to_string(), corp_id).unwrap();
 
-        // Select preludes
+        // Select preludes (2 from the 4 dealt)
         game.select_preludes(
             &"p1".to_string(),
-            vec!["prelude1".to_string(), "prelude2".to_string()],
+            vec![prelude1.clone(), prelude2.clone()],
         )
         .unwrap();
 
