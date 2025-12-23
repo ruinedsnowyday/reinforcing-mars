@@ -63,6 +63,15 @@ pub struct Game {
     
     /// Neutral player (for solo mode)
     pub neutral_player: Option<Player>,
+    
+    /// Draft state: current draft round (1-based)
+    pub draft_round: u32,
+    
+    /// Draft state: initial draft iteration (1, 2, or 3)
+    /// 1 = first project card iteration
+    /// 2 = second project card iteration
+    /// 3 = prelude draft (if enabled)
+    pub initial_draft_iteration: u32,
 }
 
 impl Game {
@@ -133,6 +142,8 @@ impl Game {
             funded_awards: Vec::new(),
             solo_mode,
             neutral_player,
+            draft_round: 1,
+            initial_draft_iteration: 1,
         }
     }
 
