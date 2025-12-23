@@ -173,9 +173,80 @@ impl Game {
         self.solo_mode
     }
 
-    /// Transition to the next phase
+    /// Transition to the next phase based on current game state
+    /// Handles conditional transitions (preludes enabled, draft variant, etc.)
     pub fn next_phase(&mut self) -> Result<(), String> {
-        self.phase = self.phase.next().ok_or("Game has ended")?;
+        let next_phase = match self.phase {
+            Phase::InitialDrafting => {
+                // Initial drafting always transitions to Research
+                Phase::Research
+            }
+            Phase::Research => {
+                // Research phase transitions based on generation and preludes
+                if self.generation == 1 && self.prelude {
+                    // Generation 1 with preludes: go to Preludes phase
+                    Phase::Preludes
+                } else {
+                    // Generation 1 without preludes, or generation 2+: go to Action phase
+                    Phase::Action
+                }
+            }
+            Phase::Preludes => {
+                // Preludes always transitions to Action
+                Phase::Action
+            }
+            Phase::Drafting => {
+                // Drafting always transitions to Research
+                Phase::Research
+            }
+            Phase::Action => {
+                // Action phase transitions to Production when all players pass
+                // This should be called via end_action_phase() instead
+                return Err("Action phase should be ended via end_action_phase() when all players pass".to_string());
+            }
+            Phase::Production => {
+                // Production always transitions to Solar
+                Phase::Solar
+            }
+            Phase::Solar => {
+                // Solar always transitions to Intergeneration
+                Phase::Intergeneration
+            }
+            Phase::Intergeneration => {
+                // Intergeneration transitions based on draft variant
+                if self.draft_variant {
+                    // Draft variant: go to Drafting phase
+                    Phase::Drafting
+                } else {
+                    // No-draft variant: go directly to Research phase
+                    Phase::Research
+                }
+            }
+            Phase::End => {
+                return Err("Game has ended".to_string());
+            }
+        };
+
+        self.phase = next_phase;
+        Ok(())
+    }
+
+    /// End the action phase and transition to Production
+    /// Should be called when all players have passed
+    pub fn end_action_phase(&mut self) -> Result<(), String> {
+        if self.phase != Phase::Action {
+            return Err("Not in action phase".to_string());
+        }
+
+        if !self.all_players_passed() {
+            return Err("Not all players have passed".to_string());
+        }
+
+        // Reset passed players for next action phase
+        self.reset_passed_players();
+
+        // Transition to Production phase
+        self.phase = Phase::Production;
         Ok(())
     }
 
@@ -240,8 +311,76 @@ impl Game {
     pub fn increment_generation(&mut self) {
         self.generation += 1;
         // Reset player states for new generation
-        // (e.g., reset passed flags, etc.)
-        // This will be expanded as we add more player state
+        self.reset_passed_players();
+        // Clear draft state
+        for player in &mut self.players {
+            player.draft_hand.clear();
+            player.drafted_cards.clear();
+            player.needs_to_draft = false;
+        }
+        // Reset draft round counter
+        self.draft_round = 1;
+    }
+
+    /// Execute the Intergeneration phase
+    /// This includes: incrementing generation, checking win conditions, calculating VP, determining winner
+    pub fn execute_intergeneration_phase(&mut self) -> Result<Option<WinCondition>, String> {
+        if self.phase != Phase::Intergeneration {
+            return Err("Not in intergeneration phase".to_string());
+        }
+
+        // Check win conditions before incrementing generation
+        if let Some(win_condition) = self.check_win_conditions() {
+            // Game is over, transition to End phase
+            self.phase = Phase::End;
+            return Ok(Some(win_condition));
+        }
+
+        // Increment generation and reset player states
+        self.increment_generation();
+
+        // Check win conditions again after incrementing
+        if let Some(win_condition) = self.check_win_conditions() {
+            // Game is over, transition to End phase
+            self.phase = Phase::End;
+            return Ok(Some(win_condition));
+        }
+
+        // Game continues, transition to next phase (Drafting or Research)
+        self.next_phase()?;
+
+        Ok(None)
+    }
+
+    /// Execute the Solar phase
+    /// This includes: World Government terraforming, final greenery placement, solo mode TR63 check
+    pub fn execute_solar_phase(&mut self) -> Result<Option<WinCondition>, String> {
+        if self.phase != Phase::Solar {
+            return Err("Not in solar phase".to_string());
+        }
+
+        // TODO: Implement World Government terraforming
+        // World Government raises the lowest global parameter by 1 step
+        // This will be implemented when we have full terraforming logic
+
+        // TODO: Implement final greenery placement
+        // Players can place final greenery tiles if they have plants
+        // This will be implemented when we have tile placement logic
+
+        // Check solo mode TR63 win condition
+        if self.solo_mode {
+            if let Some(player) = self.players.first() {
+                if player.terraform_rating >= 63 {
+                    self.phase = Phase::End;
+                    return Ok(Some(WinCondition::SoloTr63));
+                }
+            }
+        }
+
+        // Transition to Intergeneration phase
+        self.next_phase()?;
+
+        Ok(None)
     }
 
     /// Execute production phase: add production to resources
@@ -464,6 +603,240 @@ mod tests {
         // Transition to Research
         assert!(game.next_phase().is_ok());
         assert_eq!(game.phase, Phase::Research);
+    }
+
+    #[test]
+    fn test_phase_transitions_with_preludes() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, true, false, false, false, false, // prelude enabled
+        );
+
+        // Start in InitialDrafting
+        assert_eq!(game.phase, Phase::InitialDrafting);
+
+        // Transition to Research
+        assert!(game.next_phase().is_ok());
+        assert_eq!(game.phase, Phase::Research);
+
+        // Generation 1 with preludes: should transition to Preludes
+        assert!(game.next_phase().is_ok());
+        assert_eq!(game.phase, Phase::Preludes);
+
+        // Preludes should transition to Action
+        assert!(game.next_phase().is_ok());
+        assert_eq!(game.phase, Phase::Action);
+    }
+
+    #[test]
+    fn test_phase_transitions_no_preludes() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false, // no prelude
+        );
+
+        // Start in InitialDrafting
+        assert_eq!(game.phase, Phase::InitialDrafting);
+
+        // Transition to Research
+        assert!(game.next_phase().is_ok());
+        assert_eq!(game.phase, Phase::Research);
+
+        // Generation 1 without preludes: should transition directly to Action
+        assert!(game.next_phase().is_ok());
+        assert_eq!(game.phase, Phase::Action);
+    }
+
+    #[test]
+    fn test_end_action_phase() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Set phase to Action
+        game.phase = Phase::Action;
+
+        // All players must pass first
+        assert!(game.pass_player().is_ok());
+        game.next_player();
+        assert!(game.pass_player().is_ok());
+
+        // Now can end action phase
+        assert!(game.end_action_phase().is_ok());
+        assert_eq!(game.phase, Phase::Production);
+    }
+
+    #[test]
+    fn test_end_action_phase_not_all_passed() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Set phase to Action
+        game.phase = Phase::Action;
+
+        // Only one player passed
+        assert!(game.pass_player().is_ok());
+
+        // Cannot end action phase yet
+        assert!(game.end_action_phase().is_err());
+    }
+
+    #[test]
+    fn test_production_to_solar_transition() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Production;
+        assert!(game.next_phase().is_ok());
+        assert_eq!(game.phase, Phase::Solar);
+    }
+
+    #[test]
+    fn test_solar_to_intergeneration_transition() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Solar;
+        assert!(game.next_phase().is_ok());
+        assert_eq!(game.phase, Phase::Intergeneration);
+    }
+
+    #[test]
+    fn test_intergeneration_transition_draft_variant() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, true, // draft variant
+        );
+
+        game.phase = Phase::Intergeneration;
+        game.generation = 2; // Not generation 1
+
+        assert!(game.next_phase().is_ok());
+        assert_eq!(game.phase, Phase::Drafting);
+    }
+
+    #[test]
+    fn test_intergeneration_transition_no_draft_variant() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false, // no draft variant
+        );
+
+        game.phase = Phase::Intergeneration;
+        game.generation = 2; // Not generation 1
+
+        assert!(game.next_phase().is_ok());
+        assert_eq!(game.phase, Phase::Research);
+    }
+
+    #[test]
+    fn test_execute_intergeneration_phase() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Intergeneration;
+        game.generation = 1;
+
+        // Should increment generation and transition to Research (no draft variant)
+        let result = game.execute_intergeneration_phase();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), None); // No win condition
+        assert_eq!(game.generation, 2);
+        assert_eq!(game.phase, Phase::Research);
+    }
+
+    #[test]
+    fn test_execute_intergeneration_phase_win_condition() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Intergeneration;
+        // Set TR to 63 (solo mode win condition)
+        game.players[0].terraform_rating = 63;
+
+        let result = game.execute_intergeneration_phase();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some(WinCondition::SoloTr63));
+        assert_eq!(game.phase, Phase::End);
+    }
+
+    #[test]
+    fn test_execute_solar_phase() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Solar;
+        game.players[0].terraform_rating = 20; // Not 63
+
+        let result = game.execute_solar_phase();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), None); // No win condition
+        assert_eq!(game.phase, Phase::Intergeneration);
+    }
+
+    #[test]
+    fn test_execute_solar_phase_solo_tr63() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Solar;
+        game.players[0].terraform_rating = 63; // Solo win condition
+
+        let result = game.execute_solar_phase();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some(WinCondition::SoloTr63));
+        assert_eq!(game.phase, Phase::End);
     }
 
     #[test]
