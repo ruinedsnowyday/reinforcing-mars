@@ -297,10 +297,12 @@ impl Game {
             }
             DraftType::Standard => {
                 // Standard draft ends, transition to research phase
-                for player in &mut self.players {
-                    // Move drafted cards to hand for research phase
-                    player.cards_in_hand.append(&mut player.drafted_cards);
-                }
+                // According to official rules: After drafting, players examine their 4 drafted cards
+                // and choose which to buy (3 M€ each) and which to discard
+                // So we keep cards in drafted_cards (not move to hand) for the research phase
+                // The research phase will handle moving selected cards to hand
+                // Note: We don't verify card count here because finish_draft_round may have
+                // already given remaining cards to players, so they should have 4 cards total
                 self.phase = crate::game::phase::Phase::Research;
             }
             DraftType::Prelude => {
@@ -329,7 +331,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Initial draft iteration 1: should pass after
@@ -367,7 +369,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         let p1_id = "p1".to_string();
@@ -394,7 +396,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Start draft
@@ -426,7 +428,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Start standard draft
@@ -446,7 +448,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Generation 1 (odd) should pass before (counter-clockwise)
@@ -464,7 +466,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Generation 2 (even) should pass after (clockwise)
@@ -482,7 +484,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Set up draft hands manually
@@ -510,7 +512,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Set up draft hands manually
@@ -538,7 +540,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Start standard draft
@@ -581,7 +583,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Start standard draft
@@ -620,7 +622,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Start standard draft
@@ -663,7 +665,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Manually set up completed draft
@@ -676,11 +678,13 @@ mod tests {
         // Should transition to research phase
         assert_eq!(game.phase, crate::game::phase::Phase::Research);
         
-        // Drafted cards should be moved to hand
-        assert_eq!(game.players[0].cards_in_hand.len(), 4);
-        assert_eq!(game.players[1].cards_in_hand.len(), 4);
-        assert!(game.players[0].drafted_cards.is_empty());
-        assert!(game.players[1].drafted_cards.is_empty());
+        // According to official rules: After drafting, players examine their 4 drafted cards
+        // and choose which to buy (3 M€ each) and which to discard
+        // So cards should remain in drafted_cards (not moved to hand) for the research phase
+        assert_eq!(game.players[0].drafted_cards.len(), 4);
+        assert_eq!(game.players[1].drafted_cards.len(), 4);
+        assert_eq!(game.players[0].cards_in_hand.len(), 0);
+        assert_eq!(game.players[1].cards_in_hand.len(), 0);
     }
 
     #[test]
@@ -690,7 +694,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Start standard draft
@@ -720,7 +724,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Start standard draft

@@ -46,14 +46,31 @@ impl Game {
     /// If draft variant, cards come from drafting (already in drafted_cards)
     /// Otherwise, deal 4 cards to drafted_cards
     fn start_standard_research_phase(&mut self) -> Result<(), String> {
-        // TODO: Check if draft variant is enabled and handle accordingly
-        // For now, if cards are already in drafted_cards from drafting, use those
-        // Otherwise, deal 4 cards to drafted_cards (not to hand)
-        for player in &mut self.players {
-            if player.drafted_cards.is_empty() {
-                // Deal 4 project cards to drafted_cards
+        if self.draft_variant {
+            // Draft variant: Cards should already be in drafted_cards from the draft phase
+            // Verify all players have drafted cards
+            for player in &self.players {
+                if player.drafted_cards.is_empty() {
+                    return Err(format!(
+                        "Player {} has no drafted cards (draft variant requires drafting first)",
+                        player.id
+                    ));
+                }
+                // In draft variant, players should have exactly 4 drafted cards
+                if player.drafted_cards.len() != 4 {
+                    return Err(format!(
+                        "Player {} has {} drafted cards, expected 4 (draft variant)",
+                        player.id,
+                        player.drafted_cards.len()
+                    ));
+                }
+            }
+        } else {
+            // No-draft variant: Deal 4 cards directly to drafted_cards
+            for player in &mut self.players {
+                // Deal 4 project cards to drafted_cards (not to hand)
                 // Players will select from these cards, then add selected ones to hand
-                // TODO: Integrate with actual card deck
+                // TODO: Integrate with actual card deck when implemented
                 player.drafted_cards = (0..4)
                     .map(|i| format!("project_card_{i}"))
                     .collect();
@@ -286,7 +303,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Start initial research phase
@@ -304,7 +321,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Start initial research phase
@@ -333,7 +350,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Start initial research phase
@@ -351,7 +368,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, true, false, false, false, // prelude enabled
+            false, false, false, true, false, false, false, false, // prelude enabled
         );
 
         // Start research phase to deal preludes
@@ -390,7 +407,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, true, false, false, false, // prelude enabled
+            false, false, false, true, false, false, false, false, // prelude enabled
         );
 
         // Try to select wrong number of preludes
@@ -405,7 +422,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Generation 1: Cards come from drafted cards (in cards_in_hand)
@@ -443,7 +460,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Set generation to 2 (standard research phase)
@@ -494,7 +511,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Try to select more than 10 cards
@@ -512,7 +529,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Add cards to hand (simulating drafted cards)
@@ -546,7 +563,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Set generation to 2 (standard research phase)
@@ -585,7 +602,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Start initial research phase
@@ -613,7 +630,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, true, false, false, false, // prelude enabled
+            false, false, false, true, false, false, false, false, // prelude enabled
         );
 
         // Start initial research phase (deals 4 preludes)
@@ -644,6 +661,196 @@ mod tests {
 
         // Should transition to PRELUDES phase
         assert_eq!(game.phase, crate::game::phase::Phase::Preludes);
+    }
+
+    #[test]
+    fn test_research_phase_draft_variant() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, true, // draft variant enabled
+        );
+
+        // Set generation to 2 (standard research phase)
+        game.generation = 2;
+
+        // Simulate completed draft: players have 4 drafted cards each
+        game.players[0].drafted_cards = vec![
+            "drafted_card1".to_string(),
+            "drafted_card2".to_string(),
+            "drafted_card3".to_string(),
+            "drafted_card4".to_string(),
+        ];
+        game.players[1].drafted_cards = vec![
+            "drafted_card5".to_string(),
+            "drafted_card6".to_string(),
+            "drafted_card7".to_string(),
+            "drafted_card8".to_string(),
+        ];
+
+        // Start standard research phase (draft variant)
+        game.start_research_phase().unwrap();
+
+        // Should validate that players have 4 drafted cards (not deal new ones)
+        assert_eq!(game.players[0].drafted_cards.len(), 4);
+        assert_eq!(game.players[1].drafted_cards.len(), 4);
+
+        // Player 1 has some existing cards in hand
+        game.players[0].cards_in_hand = vec!["existing_card1".to_string()];
+        let initial_hand_size = game.players[0].cards_in_hand.len();
+
+        // Give player some megacredits
+        game.players[0].resources.megacredits = 50;
+        let initial_mc = game.players[0].resources.megacredits;
+
+        let card1 = game.players[0].drafted_cards[0].clone();
+        let card2 = game.players[0].drafted_cards[1].clone();
+        let card3 = game.players[0].drafted_cards[2].clone();
+
+        // Player 1 selects 3 cards from drafted_cards
+        game.select_project_cards(
+            &"p1".to_string(),
+            vec![card1.clone(), card2.clone(), card3.clone()],
+        )
+        .unwrap();
+
+        // Should have initial hand cards + 3 selected cards
+        assert_eq!(game.players[0].cards_in_hand.len(), initial_hand_size + 3);
+        assert!(game.players[0].cards_in_hand.contains(&card1));
+        assert!(game.players[0].cards_in_hand.contains(&card2));
+        assert!(game.players[0].cards_in_hand.contains(&card3));
+
+        // Should have 1 card left in drafted_cards (the unselected one)
+        assert_eq!(game.players[0].drafted_cards.len(), 1);
+        
+        // Should pay 3 M€ per card (9 total)
+        assert_eq!(game.players[0].resources.megacredits, initial_mc - 9);
+    }
+
+    #[test]
+    fn test_research_phase_draft_variant_missing_cards() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, true, // draft variant enabled
+        );
+
+        // Set generation to 2 (standard research phase)
+        game.generation = 2;
+
+        // Player has no drafted cards (draft not completed)
+        game.players[0].drafted_cards = vec![];
+
+        // Should fail because draft variant requires drafted cards
+        let result = game.start_research_phase();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("no drafted cards"));
+    }
+
+    #[test]
+    fn test_research_phase_draft_variant_wrong_card_count() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, true, // draft variant enabled
+        );
+
+        // Set generation to 2 (standard research phase)
+        game.generation = 2;
+
+        // Player has wrong number of drafted cards (should be 4)
+        game.players[0].drafted_cards = vec!["card1".to_string(), "card2".to_string(), "card3".to_string()];
+
+        // Should fail because draft variant requires exactly 4 drafted cards
+        let result = game.start_research_phase();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("expected 4"));
+    }
+
+    #[test]
+    fn test_research_phase_draft_variant_full_flow() {
+        use crate::game::draft::DraftType;
+        
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, true, // draft variant enabled
+        );
+
+        // Set generation to 2 (standard research phase)
+        game.generation = 2;
+
+        // Start standard draft
+        game.start_draft(DraftType::Standard).unwrap();
+
+        // Both players should have 4 cards in draft hand
+        assert_eq!(game.players[0].draft_hand.len(), 4);
+        assert_eq!(game.players[1].draft_hand.len(), 4);
+
+        // Complete all 4 rounds of drafting
+        for _round in 1..=4 {
+            // Player 1 drafts
+            let p1_card = game.players[0].draft_hand[0].clone();
+            game.process_draft_selection(&"p1".to_string(), vec![p1_card], DraftType::Standard).unwrap();
+            
+            // Player 2 drafts
+            let p2_card = game.players[1].draft_hand[0].clone();
+            let done = game.process_draft_selection(&"p2".to_string(), vec![p2_card], DraftType::Standard).unwrap();
+            
+            if done {
+                // Last round completed
+                break;
+            }
+        }
+
+        // After drafting, both players should have 4 cards in drafted_cards
+        assert_eq!(game.players[0].drafted_cards.len(), 4);
+        assert_eq!(game.players[1].drafted_cards.len(), 4);
+
+        // End draft iteration (transitions to research phase)
+        game.end_draft_iteration(DraftType::Standard).unwrap();
+        assert_eq!(game.phase, crate::game::phase::Phase::Research);
+
+        // Start research phase (draft variant: validates cards are in drafted_cards)
+        game.start_research_phase().unwrap();
+
+        // Cards should still be in drafted_cards (not moved to hand)
+        assert_eq!(game.players[0].drafted_cards.len(), 4);
+        assert_eq!(game.players[1].drafted_cards.len(), 4);
+
+        // Player 1 selects 3 cards to buy
+        game.players[0].resources.megacredits = 50;
+        let initial_mc = game.players[0].resources.megacredits;
+        
+        let card1 = game.players[0].drafted_cards[0].clone();
+        let card2 = game.players[0].drafted_cards[1].clone();
+        let card3 = game.players[0].drafted_cards[2].clone();
+
+        game.select_project_cards(
+            &"p1".to_string(),
+            vec![card1.clone(), card2.clone(), card3.clone()],
+        )
+        .unwrap();
+
+        // Player 1 should have 3 cards in hand (selected ones)
+        assert_eq!(game.players[0].cards_in_hand.len(), 3);
+        assert!(game.players[0].cards_in_hand.contains(&card1));
+        assert!(game.players[0].cards_in_hand.contains(&card2));
+        assert!(game.players[0].cards_in_hand.contains(&card3));
+
+        // Player 1 should have 1 card left in drafted_cards (unselected)
+        assert_eq!(game.players[0].drafted_cards.len(), 1);
+        
+        // Should pay 3 M€ per card (9 total)
+        assert_eq!(game.players[0].resources.megacredits, initial_mc - 9);
     }
 }
 

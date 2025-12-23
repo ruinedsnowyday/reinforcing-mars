@@ -182,7 +182,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, true, false, false, false, // prelude enabled
+            false, false, false, true, false, false, false, false, // prelude enabled
         );
 
         // Set up selected preludes for both players
@@ -203,7 +203,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, true, false, false, false, // prelude enabled
+            false, false, false, true, false, false, false, false, // prelude enabled
         );
 
         // Player hasn't selected preludes
@@ -221,7 +221,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, true, false, false, false, // prelude enabled
+            false, false, false, true, false, false, false, false, // prelude enabled
         );
 
         // Set up selected preludes
@@ -251,7 +251,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, true, false, false, false, // prelude enabled
+            false, false, false, true, false, false, false, false, // prelude enabled
         );
 
         // Set up selected preludes
@@ -270,7 +270,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, true, false, false, false, // prelude enabled
+            false, false, false, true, false, false, false, false, // prelude enabled
         );
 
         // Set up selected preludes
@@ -293,7 +293,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, true, false, false, false, // prelude enabled
+            false, false, false, true, false, false, false, false, // prelude enabled
         );
 
         // Set up selected preludes
@@ -330,7 +330,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, true, false, false, false, // prelude enabled
+            false, false, false, true, false, false, false, false, // prelude enabled
         );
 
         // Set up selected preludes
@@ -357,7 +357,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, true, false, false, false, // prelude enabled
+            false, false, false, true, false, false, false, false, // prelude enabled
         );
 
         // Set up selected preludes

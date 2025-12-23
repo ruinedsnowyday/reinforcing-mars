@@ -50,6 +50,9 @@ pub struct Game {
     pub turmoil: bool,
     pub promos: bool,
     
+    /// Draft variant flag - if true, players draft cards in research phase
+    pub draft_variant: bool,
+    
     /// Milestones
     pub milestones: Vec<MilestoneData>,
     pub claimed_milestones: Vec<ClaimedMilestone>,
@@ -77,6 +80,7 @@ pub struct Game {
 impl Game {
     /// Create a new game
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         id: String,
         player_names: Vec<String>,
@@ -89,6 +93,7 @@ impl Game {
         prelude2: bool,
         turmoil: bool,
         promos: bool,
+        draft_variant: bool,
     ) -> Self {
         let solo_mode = player_names.len() == 1;
         
@@ -136,6 +141,7 @@ impl Game {
             prelude2,
             turmoil,
             promos,
+            draft_variant,
             milestones: Vec::new(),
             claimed_milestones: Vec::new(),
             awards: Vec::new(),
@@ -416,7 +422,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
         
         assert_eq!(game.players.len(), 2);
@@ -433,7 +439,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
         
         assert!(game.is_solo_mode());
@@ -449,7 +455,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Initial phase
@@ -467,7 +473,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         let first_player_id = game.active_player_id.clone();
@@ -495,7 +501,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         assert_eq!(game.generation, 1);
@@ -512,7 +518,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         let player = game.players.first_mut().unwrap();
@@ -540,7 +546,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         let player = game.players.first_mut().unwrap();
@@ -561,7 +567,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         assert!(!game.all_players_passed());
@@ -582,7 +588,7 @@ mod tests {
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         // Solo mode, TR < 63, not terraformed
@@ -622,7 +628,7 @@ mod tests {
             vec!["Player 1".to_string(), "Player 2".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false,
+            false, false, false, false, false, false, false, false,
         );
 
         game.players[0].terraform_rating = 25;
