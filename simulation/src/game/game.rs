@@ -205,8 +205,13 @@ impl Game {
                 return Err("Action phase should be ended via end_action_phase() when all players pass".to_string());
             }
             Phase::Production => {
-                // Production always transitions to Solar
-                Phase::Solar
+                // Production transitions to Solar only if Venus Next is enabled
+                // Otherwise, skip directly to Intergeneration
+                if self.venus_next {
+                    Phase::Solar
+                } else {
+                    Phase::Intergeneration
+                }
             }
             Phase::Solar => {
                 // Solar always transitions to Intergeneration
@@ -439,35 +444,73 @@ impl Game {
         Ok(None)
     }
 
-    /// Execute the Solar phase
-    /// This includes: World Government terraforming, final greenery placement, solo mode TR63 check
+    /// Execute the Solar phase (Venus Next expansion only)
+    /// 
+    /// Per official rulebook:
+    /// STEP 1: Game End Check
+    /// - Check if temperature, oxygen, and oceans are all maxed out
+    /// - If so, game ends and final scoring begins (no further steps executed)
+    /// 
+    /// STEP 2: World Government Terraforming
+    /// - First player (player order hasn't shifted) acts as World Government
+    /// - Chooses a non-maxed global parameter and increases it one step, OR places an ocean tile
+    /// - All bonuses go to WG (no TR or other bonuses given to first player)
+    /// - Other cards may be triggered by this (e.g., Arctic Algae, Aphrodite corporation)
+    /// 
+    /// Note: This phase is only present when Venus Next expansion is enabled.
+    /// If Venus Next is not enabled, Production phase transitions directly to Intergeneration.
     pub fn execute_solar_phase(&mut self) -> Result<Option<WinCondition>, String> {
         if self.phase != Phase::Solar {
             return Err("Not in solar phase".to_string());
         }
 
-        // TODO: Implement World Government terraforming
-        // World Government raises the lowest global parameter by 1 step
-        // This will be implemented when we have full terraforming logic
-
-        // TODO: Implement final greenery placement
-        // Players can place final greenery tiles if they have plants
-        // This will be implemented when we have tile placement logic
-
-        // Check solo mode TR63 win condition
-        if self.solo_mode {
-            if let Some(player) = self.players.first() {
-                if player.terraform_rating >= 63 {
-                    self.phase = Phase::End;
-                    return Ok(Some(WinCondition::SoloTr63));
-                }
-            }
+        if !self.venus_next {
+            return Err("Solar phase is only available when Venus Next expansion is enabled".to_string());
         }
+
+        // STEP 1: Game End Check
+        // Check if temperature, oxygen, and oceans are all maxed out
+        // If so, game ends and final scoring begins (no further steps executed)
+        if self.is_mars_terraformed() {
+            // Game is over - transition to End phase
+            self.phase = Phase::End;
+            return Ok(Some(WinCondition::Terraformed));
+        }
+
+        // STEP 2: World Government Terraforming
+        // First player acts as World Government and chooses a non-maxed parameter to increase
+        // or places an ocean tile. Bonuses go to WG (no TR or bonuses to first player).
+        // TODO: This will be implemented when we have full action system in Phase 4.
+        // For now, this is a placeholder that will be expanded to:
+        // - Get first player
+        // - Present options (increase temperature, oxygen, venus, or place ocean)
+        // - Execute chosen action without giving bonuses to first player
+        // - Trigger card effects (e.g., Arctic Algae, Aphrodite)
+        
+        // Placeholder: World Government terraforming will be implemented in Phase 4
+        // when we have the action system and tile placement logic
 
         // Transition to Intergeneration phase
         self.next_phase()?;
 
         Ok(None)
+    }
+
+    /// Check if Mars is terraformed (temperature, oxygen, and oceans all maxed)
+    /// This is used in Solar Phase Step 1 to check for game end
+    /// Note: Venus is NOT checked here - only Mars parameters
+    pub fn is_mars_terraformed(&self) -> bool {
+        let oceans_maxed = self.global_parameters.get(
+            crate::game::global_params::GlobalParameter::Oceans,
+        ) >= crate::game::global_params::MAX_OCEANS as i32;
+        let oxygen_maxed = self.global_parameters.get(
+            crate::game::global_params::GlobalParameter::Oxygen,
+        ) >= crate::game::global_params::MAX_OXYGEN as i32;
+        let temperature_maxed = self.global_parameters.get(
+            crate::game::global_params::GlobalParameter::Temperature,
+        ) >= crate::game::global_params::MAX_TEMPERATURE;
+
+        oceans_maxed && oxygen_maxed && temperature_maxed
     }
 
     /// Execute production phase: add production to resources
@@ -850,18 +893,33 @@ mod tests {
     }
 
     #[test]
-    fn test_production_to_solar_transition() {
+    fn test_production_to_solar_transition_venus_next() {
         let mut game = Game::new(
             "game1".to_string(),
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false, false,
+            false, true, false, false, false, false, false, false, // venus_next enabled
         );
 
         game.phase = Phase::Production;
         assert!(game.next_phase().is_ok());
         assert_eq!(game.phase, Phase::Solar);
+    }
+
+    #[test]
+    fn test_production_to_intergeneration_no_venus_next() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false, // venus_next disabled
+        );
+
+        game.phase = Phase::Production;
+        assert!(game.next_phase().is_ok());
+        assert_eq!(game.phase, Phase::Intergeneration); // Skips Solar phase
     }
 
     #[test]
@@ -955,26 +1013,75 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_solar_phase() {
+    fn test_execute_solar_phase_venus_next() {
         let mut game = Game::new(
             "game1".to_string(),
             vec!["Player 1".to_string()],
             12345,
             BoardType::Tharsis,
-            false, false, false, false, false, false, false, false,
+            false, true, false, false, false, false, false, false, // venus_next enabled
         );
 
         game.phase = Phase::Solar;
-        game.players[0].terraform_rating = 20; // Not 63
+        // Mars not terraformed
+        assert!(!game.is_mars_terraformed());
 
         let result = game.execute_solar_phase();
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), None); // No win condition
+        assert_eq!(result.unwrap(), None); // No win condition, continues
         assert_eq!(game.phase, Phase::Intergeneration);
     }
 
     #[test]
-    fn test_execute_solar_phase_solo_tr63() {
+    fn test_execute_solar_phase_game_end_mars_terraformed() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, true, false, false, false, false, false, false, // venus_next enabled
+        );
+
+        game.phase = Phase::Solar;
+        // Max out Mars parameters
+        game.global_parameters.increase(
+            crate::game::global_params::GlobalParameter::Oceans,
+            100,
+        );
+        game.global_parameters.increase(
+            crate::game::global_params::GlobalParameter::Oxygen,
+            100,
+        );
+        game.global_parameters.increase(
+            crate::game::global_params::GlobalParameter::Temperature,
+            100,
+        );
+        assert!(game.is_mars_terraformed());
+
+        let result = game.execute_solar_phase();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some(WinCondition::Terraformed));
+        assert_eq!(game.phase, Phase::End);
+    }
+
+    #[test]
+    fn test_execute_solar_phase_no_venus_next() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false, // venus_next disabled
+        );
+
+        game.phase = Phase::Solar;
+        let result = game.execute_solar_phase();
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Venus Next"));
+    }
+
+    #[test]
+    fn test_is_mars_terraformed() {
         let mut game = Game::new(
             "game1".to_string(),
             vec!["Player 1".to_string()],
@@ -983,13 +1090,32 @@ mod tests {
             false, false, false, false, false, false, false, false,
         );
 
-        game.phase = Phase::Solar;
-        game.players[0].terraform_rating = 63; // Solo win condition
+        // Initially not terraformed
+        assert!(!game.is_mars_terraformed());
 
-        let result = game.execute_solar_phase();
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Some(WinCondition::SoloTr63));
-        assert_eq!(game.phase, Phase::End);
+        // Max out oceans
+        game.global_parameters.increase(
+            crate::game::global_params::GlobalParameter::Oceans,
+            100,
+        );
+        assert!(!game.is_mars_terraformed()); // Still not terraformed
+
+        // Max out oxygen
+        game.global_parameters.increase(
+            crate::game::global_params::GlobalParameter::Oxygen,
+            100,
+        );
+        assert!(!game.is_mars_terraformed()); // Still not terraformed
+
+        // Max out temperature
+        game.global_parameters.increase(
+            crate::game::global_params::GlobalParameter::Temperature,
+            100,
+        );
+        assert!(game.is_mars_terraformed()); // Now terraformed
+
+        // Venus is not checked for Mars terraforming
+        assert!(game.is_mars_terraformed());
     }
 
     #[test]
@@ -1130,8 +1256,9 @@ mod tests {
         assert_eq!(player.resources.megacredits, 25); // 5 + 20 TR
         assert_eq!(player.resources.steel, 2);
 
-        // Should have transitioned to Solar phase
-        assert_eq!(game.phase, Phase::Solar);
+        // Should have transitioned to next phase (Solar if Venus Next, Intergeneration otherwise)
+        // Since venus_next is false, should go to Intergeneration
+        assert_eq!(game.phase, Phase::Intergeneration);
     }
 
     #[test]
