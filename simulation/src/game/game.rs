@@ -283,17 +283,104 @@ impl Game {
         self.active_player_id = Some(self.players[next_index].id.clone());
     }
 
-    /// Mark the current player as passed
+    /// Mark the current player as passed and move to next player
+    /// If all players have passed, automatically transitions to Production phase
     pub fn pass_player(&mut self) -> Result<(), String> {
+        if self.phase != Phase::Action {
+            return Err("Not in action phase".to_string());
+        }
+
         let player_id = self
             .active_player_id
             .as_ref()
             .ok_or("No active player")?;
 
+        // Mark player as passed if not already passed
         if !self.passed_players.contains(player_id) {
             self.passed_players.push(player_id.clone());
         }
 
+        // Check if all players have passed
+        if self.all_players_passed() {
+            // Transition to Production phase
+            self.end_action_phase()?;
+            return Ok(());
+        }
+
+        // Move to next non-passed player
+        self.move_to_next_active_player();
+
+        Ok(())
+    }
+
+    /// Move to the next player who hasn't passed yet
+    /// Wraps around to find the first non-passed player
+    fn move_to_next_active_player(&mut self) {
+        if self.players.is_empty() {
+            return;
+        }
+
+        let current_index = self
+            .active_player_id
+            .as_ref()
+            .and_then(|id| {
+                self.players
+                    .iter()
+                    .position(|p| p.id == *id)
+            })
+            .unwrap_or(0);
+
+        // Try each player starting from the next one
+        for offset in 1..=self.players.len() {
+            let next_index = (current_index + offset) % self.players.len();
+            let next_player_id = &self.players[next_index].id;
+
+            // If this player hasn't passed, make them active
+            if !self.passed_players.contains(next_player_id) {
+                self.active_player_id = Some(next_player_id.clone());
+                return;
+            }
+        }
+
+        // All players have passed (shouldn't happen, but handle gracefully)
+        // This case is already handled in pass_player(), but just in case
+    }
+
+    /// Start the action phase
+    /// Sets the active player to the first player and resets passed players
+    pub fn start_action_phase(&mut self) -> Result<(), String> {
+        if self.phase != Phase::Action {
+            return Err("Not in action phase".to_string());
+        }
+
+        // Reset passed players
+        self.reset_passed_players();
+
+        // Set active player to first player
+        if let Some(first_player) = self.players.first() {
+            self.active_player_id = Some(first_player.id.clone());
+        } else {
+            return Err("No players in game".to_string());
+        }
+
+        // In solo mode, handle neutral player actions
+        if self.solo_mode {
+            self.handle_neutral_player_action()?;
+        }
+
+        Ok(())
+    }
+
+    /// Handle neutral player action in solo mode
+    /// This is a placeholder that will be expanded when we implement full action system
+    fn handle_neutral_player_action(&mut self) -> Result<(), String> {
+        // TODO: Implement neutral player automatic actions
+        // Neutral player should:
+        // - Take actions automatically (standard projects, card plays, etc.)
+        // - Pass when appropriate
+        // - This will be expanded in Phase 4 when we implement the action system
+
+        // For now, this is a placeholder
         Ok(())
     }
 
@@ -384,7 +471,14 @@ impl Game {
     }
 
     /// Execute production phase: add production to resources
-    pub fn execute_production_phase(&mut self) {
+    /// This method processes production for all players and the neutral player (in solo mode)
+    /// Note: Production values persist across generations (they are NOT reset)
+    pub fn execute_production_phase(&mut self) -> Result<(), String> {
+        if self.phase != Phase::Production {
+            return Err("Not in production phase".to_string());
+        }
+
+        // Process production for all players
         for player in &mut self.players {
             // Add production to resources
             let production = &player.production;
@@ -448,9 +542,35 @@ impl Game {
 
         // Handle neutral player production in solo mode
         if let Some(ref mut _neutral) = self.neutral_player {
-            // Neutral player production logic (simplified for now)
-            // Will be expanded in later phases
+            // Neutral player production logic
+            // In solo mode, neutral player has 2 cities on the board
+            // Neutral player gets production from those cities
+            // For now, this is a placeholder - will be expanded when we implement tile placement
+            // TODO: Calculate neutral player production based on placed tiles
+            // Neutral player typically gets:
+            // - Production from city tiles (if any cards give city production)
+            // - This will be implemented when we have full tile placement and card system
+            
+            // For now, neutral player production is handled as a placeholder
+            // The neutral player's production will be calculated based on:
+            // - City tiles placed on the board
+            // - Any cards that affect neutral player production
+            // This will be expanded in Phase 4 when we implement actions and tile placement
         }
+
+        Ok(())
+    }
+
+    /// Execute production phase and transition to Solar phase
+    /// This is the main entry point for completing the production phase
+    pub fn complete_production_phase(&mut self) -> Result<(), String> {
+        // Execute production
+        self.execute_production_phase()?;
+
+        // Transition to Solar phase
+        self.next_phase()?;
+
+        Ok(())
     }
 
     /// Check win conditions
@@ -665,13 +785,27 @@ mod tests {
 
         // Set phase to Action
         game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
 
-        // All players must pass first
+        // Pass first player
         assert!(game.pass_player().is_ok());
-        game.next_player();
-        assert!(game.pass_player().is_ok());
+        assert_eq!(game.phase, Phase::Action); // Still in action phase
 
-        // Now can end action phase
+        // Pass second player (last one) - should auto-transition
+        assert!(game.pass_player().is_ok());
+        assert_eq!(game.phase, Phase::Production); // Automatically transitioned
+
+        // Test manual end_action_phase when all players have passed
+        // (This is now redundant since pass_player() does it automatically,
+        // but we test it for completeness)
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+        
+        // Manually mark all players as passed
+        game.passed_players.push("p1".to_string());
+        game.passed_players.push("p2".to_string());
+        
+        // Now can end action phase manually
         assert!(game.end_action_phase().is_ok());
         assert_eq!(game.phase, Phase::Production);
     }
@@ -894,6 +1028,8 @@ mod tests {
             false, false, false, false, false, false, false, false,
         );
 
+        game.phase = Phase::Production;
+
         let player = game.players.first_mut().unwrap();
         player.production.megacredits = 5;
         player.production.steel = 2;
@@ -901,7 +1037,7 @@ mod tests {
         player.terraform_rating = 20;
 
         // Execute production
-        game.execute_production_phase();
+        assert!(game.execute_production_phase().is_ok());
 
         let player = game.players.first().unwrap();
         // Should have: 5 (production) + 20 (TR) = 25 megacredits
@@ -922,15 +1058,142 @@ mod tests {
             false, false, false, false, false, false, false, false,
         );
 
+        game.phase = Phase::Production;
+
         let player = game.players.first_mut().unwrap();
         player.production.megacredits = -3; // Negative production
         player.terraform_rating = 20;
 
-        game.execute_production_phase();
+        assert!(game.execute_production_phase().is_ok());
 
         let player = game.players.first().unwrap();
         // Should have: 20 (TR) - 3 (negative production) = 17 megacredits
         assert_eq!(player.resources.megacredits, 17);
+    }
+
+    #[test]
+    fn test_production_phase_wrong_phase() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Not in production phase
+        game.phase = Phase::Action;
+        assert!(game.execute_production_phase().is_err());
+    }
+
+    #[test]
+    fn test_complete_production_phase() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Production;
+
+        let player = game.players.first_mut().unwrap();
+        player.production.megacredits = 5;
+        player.production.steel = 2;
+        player.terraform_rating = 20;
+
+        // Complete production phase (executes production and transitions)
+        assert!(game.complete_production_phase().is_ok());
+
+        // Should have received production
+        let player = game.players.first().unwrap();
+        assert_eq!(player.resources.megacredits, 25); // 5 + 20 TR
+        assert_eq!(player.resources.steel, 2);
+
+        // Should have transitioned to Solar phase
+        assert_eq!(game.phase, Phase::Solar);
+    }
+
+    #[test]
+    fn test_production_phase_multiple_players() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Production;
+
+        // Set different production for each player
+        game.players[0].production.megacredits = 5;
+        game.players[0].production.steel = 2;
+        game.players[0].terraform_rating = 20;
+
+        game.players[1].production.megacredits = 3;
+        game.players[1].production.titanium = 1;
+        game.players[1].terraform_rating = 18;
+
+        assert!(game.execute_production_phase().is_ok());
+
+        // Player 1: 5 + 20 = 25 M€, 2 steel
+        assert_eq!(game.players[0].resources.megacredits, 25);
+        assert_eq!(game.players[0].resources.steel, 2);
+
+        // Player 2: 3 + 18 = 21 M€, 1 titanium
+        assert_eq!(game.players[1].resources.megacredits, 21);
+        assert_eq!(game.players[1].resources.titanium, 1);
+    }
+
+    #[test]
+    fn test_production_phase_energy_conversion() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Production;
+
+        let player = game.players.first_mut().unwrap();
+        player.production.energy = 5;
+        player.resources.energy = 3; // Existing energy
+        player.terraform_rating = 20;
+
+        assert!(game.execute_production_phase().is_ok());
+
+        let player = game.players.first().unwrap();
+        // Energy should be converted to heat: 5 (production) + 3 (existing) = 8 heat
+        assert_eq!(player.resources.energy, 0);
+        assert_eq!(player.resources.heat, 8);
+    }
+
+    #[test]
+    fn test_production_phase_solo_mode() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Production;
+
+        let player = game.players.first_mut().unwrap();
+        player.production.megacredits = 5;
+        player.terraform_rating = 14; // Solo mode starts with 14 TR
+
+        // Should handle neutral player (placeholder for now)
+        assert!(game.execute_production_phase().is_ok());
+
+        let player = game.players.first().unwrap();
+        // Should have: 5 (production) + 14 (TR) = 19 megacredits
+        assert_eq!(player.resources.megacredits, 19);
     }
 
     #[test]
@@ -943,15 +1206,159 @@ mod tests {
             false, false, false, false, false, false, false, false,
         );
 
+        // Set to action phase
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let first_player_id = game.active_player_id.clone();
+
         assert!(!game.all_players_passed());
         assert!(game.pass_player().is_ok());
         assert_eq!(game.passed_players.len(), 1);
         assert!(!game.all_players_passed());
+        
+        // Should have moved to next player
+        assert_ne!(game.active_player_id, first_player_id);
 
-        game.next_player();
+        // Pass second player (last one)
+        assert!(game.pass_player().is_ok());
+        
+        // Should have automatically transitioned to Production phase
+        assert_eq!(game.phase, Phase::Production);
+        
+        // Passed players should be reset for next action phase
+        assert_eq!(game.passed_players.len(), 0);
+    }
+
+    #[test]
+    fn test_start_action_phase() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Set to action phase
+        game.phase = Phase::Action;
+
+        // Start action phase
+        assert!(game.start_action_phase().is_ok());
+        
+        // Active player should be first player
+        assert_eq!(game.active_player_id, Some("p1".to_string()));
+        
+        // Passed players should be empty
+        assert!(game.passed_players.is_empty());
+    }
+
+    #[test]
+    fn test_start_action_phase_wrong_phase() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Not in action phase
+        assert!(game.start_action_phase().is_err());
+    }
+
+    #[test]
+    fn test_pass_player_auto_transition() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let first_player_id = game.active_player_id.clone().unwrap();
+
+        // Pass first player
+        assert!(game.pass_player().is_ok());
+        assert_eq!(game.passed_players.len(), 1);
+        assert_ne!(game.active_player_id, Some(first_player_id.clone()));
+        assert_eq!(game.phase, Phase::Action); // Still in action phase
+
+        // Pass second player
         assert!(game.pass_player().is_ok());
         assert_eq!(game.passed_players.len(), 2);
-        assert!(game.all_players_passed());
+        assert_eq!(game.phase, Phase::Action); // Still in action phase
+
+        // Pass third player (last one)
+        assert!(game.pass_player().is_ok());
+        
+        // Should have automatically transitioned to Production phase
+        assert_eq!(game.phase, Phase::Production);
+        
+        // Passed players should be reset for next action phase
+        assert_eq!(game.passed_players.len(), 0);
+    }
+
+    #[test]
+    fn test_pass_player_wrong_phase() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Not in action phase
+        assert!(game.pass_player().is_err());
+    }
+
+    #[test]
+    fn test_move_to_next_active_player() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let first_player_id = game.active_player_id.clone().unwrap();
+
+        // Manually mark first player as passed
+        game.passed_players.push(first_player_id.clone());
+
+        // Move to next active player
+        game.move_to_next_active_player();
+
+        // Should have moved to second player
+        assert_eq!(game.active_player_id, Some("p2".to_string()));
+    }
+
+    #[test]
+    fn test_action_phase_solo_mode() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+
+        // Start action phase (should handle neutral player)
+        assert!(game.start_action_phase().is_ok());
+        
+        // Active player should be the solo player
+        assert_eq!(game.active_player_id, Some("p1".to_string()));
     }
 
     #[test]
