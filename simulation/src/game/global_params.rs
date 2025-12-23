@@ -191,6 +191,43 @@ impl GlobalParameters {
         }
     }
 
+    /// Decrease a global parameter by a number of steps
+    /// Returns the number of steps actually decreased (may be less than requested if at minimum)
+    /// Note: Decreases are only possible through special effects (e.g., Turmoil global events).
+    /// In normal gameplay, parameters can only increase.
+    pub fn decrease(&mut self, param: GlobalParameter, steps: u32) -> u32 {
+        if steps == 0 {
+            return 0;
+        }
+
+        match param {
+            GlobalParameter::Oceans => {
+                let current_scale = self.oceans as u32;
+                let actual_steps = steps.min(current_scale); // Can't go below 0
+                self.oceans = (current_scale - actual_steps) as u8;
+                actual_steps
+            }
+            GlobalParameter::Oxygen => {
+                let current_scale = self.oxygen as u32;
+                let actual_steps = steps.min(current_scale); // Can't go below 0
+                self.oxygen = (current_scale - actual_steps) as u8;
+                actual_steps
+            }
+            GlobalParameter::Temperature => {
+                let current_scale = self.temperature as u32;
+                let actual_steps = steps.min(current_scale); // Can't go below 0 (which is -30)
+                self.temperature = (current_scale - actual_steps) as u8;
+                actual_steps
+            }
+            GlobalParameter::Venus => {
+                let current_scale = self.venus as u32;
+                let actual_steps = steps.min(current_scale); // Can't go below 0
+                self.venus = (current_scale - actual_steps) as u8;
+                actual_steps
+            }
+        }
+    }
+
     /// Check if a global parameter can be increased
     pub fn can_increase(&self, param: GlobalParameter) -> bool {
         match param {
@@ -198,6 +235,17 @@ impl GlobalParameters {
             GlobalParameter::Oxygen => self.oxygen < (OXYGEN_MAX_LEVEL - 1),
             GlobalParameter::Temperature => self.temperature < (TEMPERATURE_MAX_LEVEL - 1),
             GlobalParameter::Venus => self.venus < (VENUS_MAX_LEVEL - 1),
+        }
+    }
+
+    /// Check if a global parameter can be decreased
+    /// Returns true if the parameter is above its minimum value
+    pub fn can_decrease(&self, param: GlobalParameter) -> bool {
+        match param {
+            GlobalParameter::Oceans => self.oceans > 0,
+            GlobalParameter::Oxygen => self.oxygen > 0,
+            GlobalParameter::Temperature => self.temperature > 0, // 0 scale = -30 (minimum)
+            GlobalParameter::Venus => self.venus > 0,
         }
     }
 
@@ -230,32 +278,54 @@ impl GlobalParameters {
         }
     }
 
-    /// Deprecated: Use `increase()` instead. Global parameters can only increase.
-    /// This method is kept for backward compatibility but only allows positive amounts.
-    #[deprecated(note = "Use increase() instead. Global parameters can only increase.")]
+    /// Deprecated: Use `increase()` or `decrease()` instead.
+    /// This method is kept for backward compatibility.
+    /// Positive amounts use `increase()`, negative amounts use `decrease()`.
+    #[deprecated(note = "Use increase() or decrease() instead.")]
     pub fn add(&mut self, param: GlobalParameter, amount: i32) {
-        if amount <= 0 {
-            return; // Can only increase
+        if amount > 0 {
+            // Positive: increase
+            match param {
+                GlobalParameter::Oceans => {
+                    let steps = amount as u32; // 1 step = 1 unit
+                    self.increase(param, steps);
+                }
+                GlobalParameter::Oxygen => {
+                    let steps = amount as u32; // 1 step = 1 unit
+                    self.increase(param, steps);
+                }
+                GlobalParameter::Temperature => {
+                    let steps = (amount + TEMPERATURE_STEP - 1) / TEMPERATURE_STEP; // Round up
+                    self.increase(param, steps as u32);
+                }
+                GlobalParameter::Venus => {
+                    let steps = (amount as u32).div_ceil(VENUS_STEP);
+                    self.increase(param, steps);
+                }
+            }
+        } else if amount < 0 {
+            // Negative: decrease
+            let abs_amount = (-amount) as u32;
+            match param {
+                GlobalParameter::Oceans => {
+                    self.decrease(param, abs_amount);
+                }
+                GlobalParameter::Oxygen => {
+                    self.decrease(param, abs_amount);
+                }
+                GlobalParameter::Temperature => {
+                    // Convert absolute amount to steps (round up)
+                    let steps = (abs_amount as i32 + TEMPERATURE_STEP - 1) / TEMPERATURE_STEP;
+                    self.decrease(param, steps as u32);
+                }
+                GlobalParameter::Venus => {
+                    // Convert absolute amount to steps (round up)
+                    let steps = abs_amount.div_ceil(VENUS_STEP);
+                    self.decrease(param, steps);
+                }
+            }
         }
-        
-        match param {
-            GlobalParameter::Oceans => {
-                let steps = amount as u32; // 1 step = 1 unit
-                self.increase(param, steps);
-            }
-            GlobalParameter::Oxygen => {
-                let steps = amount as u32; // 1 step = 1 unit
-                self.increase(param, steps);
-            }
-            GlobalParameter::Temperature => {
-                let steps = (amount + TEMPERATURE_STEP - 1) / TEMPERATURE_STEP; // Round up
-                self.increase(param, steps as u32);
-            }
-            GlobalParameter::Venus => {
-                let steps = (amount as u32).div_ceil(VENUS_STEP);
-                self.increase(param, steps);
-            }
-        }
+        // amount == 0: do nothing
     }
 
     /// Check if Mars is fully terraformed (all parameters at max)
@@ -333,21 +403,84 @@ mod tests {
     }
 
     #[test]
-    fn test_cannot_decrease() {
+    fn test_can_decrease() {
         let mut params = GlobalParameters::new();
         
         // Set to some value
         params.increase(GlobalParameter::Oceans, 5);
         assert_eq!(params.get(GlobalParameter::Oceans), 5);
         
-        // Try to decrease using deprecated add (should be ignored)
-        #[allow(deprecated)]
-        params.add(GlobalParameter::Oceans, -10);
-        assert_eq!(params.get(GlobalParameter::Oceans), 5); // Unchanged
+        // Decrease using decrease method
+        let steps = params.decrease(GlobalParameter::Oceans, 2);
+        assert_eq!(steps, 2);
+        assert_eq!(params.get(GlobalParameter::Oceans), 3);
         
-        // Can only increase
-        params.increase(GlobalParameter::Oceans, 1);
-        assert_eq!(params.get(GlobalParameter::Oceans), 6);
+        // Decrease using deprecated add (negative amount)
+        #[allow(deprecated)]
+        params.add(GlobalParameter::Oceans, -2);
+        assert_eq!(params.get(GlobalParameter::Oceans), 1);
+        
+        // Try to decrease below minimum (should stop at 0)
+        let steps = params.decrease(GlobalParameter::Oceans, 10);
+        assert_eq!(steps, 1); // Only 1 step was possible
+        assert_eq!(params.get(GlobalParameter::Oceans), 0); // At minimum
+    }
+
+    #[test]
+    fn test_decrease_temperature() {
+        let mut params = GlobalParameters::new();
+        
+        // Start at -30 (scale 0)
+        assert_eq!(params.get(GlobalParameter::Temperature), MIN_TEMPERATURE);
+        
+        // Increase to -20 (scale 5)
+        params.increase(GlobalParameter::Temperature, 5);
+        assert_eq!(params.get(GlobalParameter::Temperature), -20);
+        
+        // Decrease by 2 steps (should go to -24, scale 3)
+        let steps = params.decrease(GlobalParameter::Temperature, 2);
+        assert_eq!(steps, 2);
+        assert_eq!(params.get(GlobalParameter::Temperature), -24);
+        
+        // Decrease using deprecated add (negative amount, e.g., Snow Cover event)
+        #[allow(deprecated)]
+        params.add(GlobalParameter::Temperature, -2); // -2 degrees = -1 step
+        assert_eq!(params.get(GlobalParameter::Temperature), -26);
+    }
+
+    #[test]
+    fn test_decrease_cannot_go_below_minimum() {
+        let mut params = GlobalParameters::new();
+        
+        // Start at minimum
+        assert_eq!(params.get(GlobalParameter::Oceans), 0);
+        assert_eq!(params.get(GlobalParameter::Temperature), MIN_TEMPERATURE);
+        
+        // Try to decrease (should return 0 steps)
+        let steps = params.decrease(GlobalParameter::Oceans, 5);
+        assert_eq!(steps, 0);
+        assert_eq!(params.get(GlobalParameter::Oceans), 0);
+        
+        let steps = params.decrease(GlobalParameter::Temperature, 5);
+        assert_eq!(steps, 0);
+        assert_eq!(params.get(GlobalParameter::Temperature), MIN_TEMPERATURE);
+    }
+
+    #[test]
+    fn test_can_decrease_method() {
+        let mut params = GlobalParameters::new();
+        
+        // At minimum, cannot decrease
+        assert!(!params.can_decrease(GlobalParameter::Oceans));
+        assert!(!params.can_decrease(GlobalParameter::Temperature));
+        
+        // Increase a bit
+        params.increase(GlobalParameter::Oceans, 3);
+        params.increase(GlobalParameter::Temperature, 2);
+        
+        // Now can decrease
+        assert!(params.can_decrease(GlobalParameter::Oceans));
+        assert!(params.can_decrease(GlobalParameter::Temperature));
     }
 
     #[test]
