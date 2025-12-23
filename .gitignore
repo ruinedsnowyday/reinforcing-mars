@@ -241,3 +241,9 @@ Cargo.lock
 
 # Rust-analyzer (LSP) cache
 .rust-analyzer/
+
+# ============================================================================
+# Reference Files
+# ============================================================================
+# Terraforming Mars assets directory (contains rulebooks for official expansions)
+assets/
