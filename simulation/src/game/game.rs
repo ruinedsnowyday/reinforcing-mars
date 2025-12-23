@@ -471,21 +471,44 @@ impl Game {
     }
 
     /// Execute production phase: add production to resources
-    /// This method processes production for all players and the neutral player (in solo mode)
+    /// 
+    /// Per official rulebook:
+    /// 1. First, all energy is converted into heat (move all resource cubes from energy to heat)
+    /// 2. Then, all players receive new resources:
+    ///    - Players get M€ according to their terraform rating plus any M€ production (which may be negative!)
+    ///    - Players also get any other resources they have production of
+    /// 3. Finally, remove player markers from used action cards (to mark they may be used again next generation)
+    /// 
     /// Note: Production values persist across generations (they are NOT reset)
     pub fn execute_production_phase(&mut self) -> Result<(), String> {
         if self.phase != Phase::Production {
             return Err("Not in production phase".to_string());
         }
 
-        // Process production for all players
+        // Process production for all players simultaneously
         for player in &mut self.players {
-            // Add production to resources
             let production = &player.production;
             let resources = &mut player.resources;
             let tr = player.terraform_rating;
 
+            // Step 1: Convert all existing energy to heat FIRST (before adding production)
+            // Per rulebook: "First, all energy is converted into heat (move all resource cubes from the energy box to the heat box)"
+            let existing_energy = resources.get(crate::player::resources::Resource::Energy);
+            if existing_energy > 0 {
+                resources.add(
+                    crate::player::resources::Resource::Heat,
+                    existing_energy,
+                );
+                resources.set(
+                    crate::player::resources::Resource::Energy,
+                    0,
+                );
+            }
+
+            // Step 2: Add production to resources
+            // Per rulebook: "Secondly, all players receive new resources"
             // Add megacredits: production + TR (TR is always positive)
+            // Note: M€ production may be negative!
             let mc_production = production.megacredits;
             if mc_production >= 0 {
                 resources.add(
@@ -526,18 +549,14 @@ impl Game {
                 production.heat,
             );
 
-            // Energy converts to heat at end of production
-            let energy = resources.get(crate::player::resources::Resource::Energy);
-            if energy > 0 {
-                resources.add(
-                    crate::player::resources::Resource::Heat,
-                    energy,
-                );
-                resources.set(
-                    crate::player::resources::Resource::Energy,
-                    0,
-                );
-            }
+            // Note: Energy production is added to the energy box and stays there
+            // It will be converted to heat in the NEXT production phase
+
+            // Step 3: Remove player markers from used action cards
+            // This allows action cards to be used again next generation
+            // TODO: Implement when action cards are added in Phase 4
+            // For now, this is a placeholder - action cards will track usage state
+            // and this step will reset that state for all players' action cards
         }
 
         // Handle neutral player production in solo mode
@@ -1043,9 +1062,9 @@ mod tests {
         // Should have: 5 (production) + 20 (TR) = 25 megacredits
         assert_eq!(player.resources.megacredits, 25);
         assert_eq!(player.resources.steel, 2);
-        // Energy should convert to heat
-        assert_eq!(player.resources.energy, 0);
-        assert_eq!(player.resources.heat, 3);
+        // Energy production (3) stays in energy box until next production phase
+        assert_eq!(player.resources.energy, 3);
+        assert_eq!(player.resources.heat, 0);
     }
 
     #[test]
@@ -1167,9 +1186,80 @@ mod tests {
         assert!(game.execute_production_phase().is_ok());
 
         let player = game.players.first().unwrap();
-        // Energy should be converted to heat: 5 (production) + 3 (existing) = 8 heat
-        assert_eq!(player.resources.energy, 0);
-        assert_eq!(player.resources.heat, 8);
+        // Existing energy (3) should be converted to heat
+        // Newly produced energy (5) stays in energy box until next production phase
+        assert_eq!(player.resources.energy, 5); // Newly produced energy remains
+        assert_eq!(player.resources.heat, 3); // Only existing energy converted
+    }
+
+    #[test]
+    fn test_production_phase_energy_regression_newly_produced_stays() {
+        // Regression test: Newly produced energy must NOT be converted to heat immediately
+        // Per rulebook: "First, all energy is converted into heat" (existing energy only)
+        // Then production is added, and newly produced energy stays in energy box
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Production;
+
+        let player = game.players.first_mut().unwrap();
+        // Set up: player has existing energy and energy production
+        player.resources.energy = 4; // Existing energy (should be converted to heat)
+        player.production.energy = 7; // Energy production (should stay in energy box)
+        player.terraform_rating = 20;
+
+        assert!(game.execute_production_phase().is_ok());
+
+        let player = game.players.first().unwrap();
+        // Regression check: newly produced energy (7) must remain in energy box
+        assert_eq!(
+            player.resources.energy, 7,
+            "Newly produced energy must stay in energy box, not be converted to heat"
+        );
+        // Only existing energy (4) should be converted to heat
+        assert_eq!(
+            player.resources.heat, 4,
+            "Only existing energy should be converted to heat, not newly produced energy"
+        );
+    }
+
+    #[test]
+    fn test_production_phase_energy_regression_no_existing_energy() {
+        // Regression test: When there's no existing energy, only newly produced energy exists
+        // This should stay in the energy box
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Production;
+
+        let player = game.players.first_mut().unwrap();
+        player.resources.energy = 0; // No existing energy
+        player.production.energy = 6; // Energy production
+        player.terraform_rating = 20;
+
+        assert!(game.execute_production_phase().is_ok());
+
+        let player = game.players.first().unwrap();
+        // Newly produced energy (6) should stay in energy box
+        assert_eq!(
+            player.resources.energy, 6,
+            "Newly produced energy must stay in energy box"
+        );
+        // No heat should be produced (no existing energy to convert)
+        assert_eq!(
+            player.resources.heat, 0,
+            "No heat should be produced when there's no existing energy"
+        );
     }
 
     #[test]
