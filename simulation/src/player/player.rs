@@ -33,6 +33,27 @@ pub struct Player {
     
     /// Victory points breakdown (for tracking VP sources)
     pub victory_points: i32,
+    
+    /// Draft state: cards currently in draft hand
+    pub draft_hand: Vec<String>,
+    
+    /// Draft state: cards drafted during current draft iteration
+    pub drafted_cards: Vec<String>,
+    
+    /// Draft state: whether this player needs to make a draft selection
+    pub needs_to_draft: bool,
+    
+    /// Research phase: corporation cards dealt to this player
+    pub dealt_corporation_cards: Vec<String>,
+    
+    /// Research phase: selected corporation card
+    pub selected_corporation: Option<String>,
+    
+    /// Research phase: selected prelude cards (2 cards)
+    pub selected_preludes: Vec<String>,
+    
+    /// Research phase: prelude cards dealt to this player
+    pub dealt_prelude_cards: Vec<String>,
 }
 
 impl Player {
@@ -47,6 +68,13 @@ impl Player {
             cards_in_hand: Vec::new(),
             played_cards: Vec::new(),
             victory_points: 0,
+            draft_hand: Vec::new(),
+            drafted_cards: Vec::new(),
+            needs_to_draft: false,
+            dealt_corporation_cards: Vec::new(),
+            selected_corporation: None,
+            selected_preludes: Vec::new(),
+            dealt_prelude_cards: Vec::new(),
         }
     }
 
