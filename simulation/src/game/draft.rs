@@ -750,5 +750,255 @@ mod tests {
             assert_eq!(player.drafted_cards.len(), 1);
         }
     }
+
+    #[test]
+    fn test_standard_draft_three_players_completion() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Start standard draft
+        game.start_draft(DraftType::Standard).unwrap();
+
+        // Draft all 4 rounds
+        loop {
+            let mut all_done = false;
+            
+            // All three players draft
+            for i in 0..3 {
+                let player_id = format!("p{}", i + 1);
+                let player = game.get_player(&player_id).unwrap();
+                
+                // Check if player has cards to draft
+                if player.draft_hand.is_empty() {
+                    all_done = true;
+                    break;
+                }
+                
+                let card = player.draft_hand[0].clone();
+                let done = game.process_draft_selection(&player_id, vec![card], DraftType::Standard).unwrap();
+                
+                if done {
+                    all_done = true;
+                    break;
+                }
+            }
+            
+            if all_done {
+                break;
+            }
+        }
+
+        // After completion, all players should have 4 drafted cards
+        for player in &game.players {
+            assert_eq!(player.drafted_cards.len(), 4);
+            assert!(player.draft_hand.is_empty());
+            assert!(!player.needs_to_draft);
+        }
+    }
+
+    #[test]
+    fn test_standard_draft_three_players_card_passing_after() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Set up draft hands manually
+        game.players[0].draft_hand = vec!["card1".to_string(), "card2".to_string(), "card3".to_string()];
+        game.players[1].draft_hand = vec!["card4".to_string(), "card5".to_string(), "card6".to_string()];
+        game.players[2].draft_hand = vec!["card7".to_string(), "card8".to_string(), "card9".to_string()];
+
+        // Set generation to 2 (even) so we pass after (clockwise)
+        game.generation = 2;
+        game.draft_round = 2; // Not first round, so we pass cards
+
+        // Pass cards
+        game.pass_draft_cards(DraftType::Standard).unwrap();
+
+        // After passing clockwise: P1 gets P3's cards, P2 gets P1's cards, P3 gets P2's cards
+        assert_eq!(game.players[0].draft_hand, vec!["card7", "card8", "card9"]);
+        assert_eq!(game.players[1].draft_hand, vec!["card1", "card2", "card3"]);
+        assert_eq!(game.players[2].draft_hand, vec!["card4", "card5", "card6"]);
+    }
+
+    #[test]
+    fn test_standard_draft_three_players_card_passing_before() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Set up draft hands manually
+        game.players[0].draft_hand = vec!["card1".to_string(), "card2".to_string(), "card3".to_string()];
+        game.players[1].draft_hand = vec!["card4".to_string(), "card5".to_string(), "card6".to_string()];
+        game.players[2].draft_hand = vec!["card7".to_string(), "card8".to_string(), "card9".to_string()];
+
+        // Set generation to 1 (odd) so we pass before (counter-clockwise)
+        game.generation = 1;
+        game.draft_round = 2; // Not first round, so we pass cards
+
+        // Pass cards
+        game.pass_draft_cards(DraftType::Standard).unwrap();
+
+        // After passing counter-clockwise: P1 gets P2's cards, P2 gets P3's cards, P3 gets P1's cards
+        assert_eq!(game.players[0].draft_hand, vec!["card4", "card5", "card6"]);
+        assert_eq!(game.players[1].draft_hand, vec!["card7", "card8", "card9"]);
+        assert_eq!(game.players[2].draft_hand, vec!["card1", "card2", "card3"]);
+    }
+
+    #[test]
+    fn test_standard_draft_four_players() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string(), "Player 4".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Start standard draft
+        game.start_draft(DraftType::Standard).unwrap();
+
+        // All four players should have 4 cards
+        for player in &game.players {
+            assert_eq!(player.draft_hand.len(), 4);
+            assert!(player.needs_to_draft);
+        }
+
+        // All four players draft
+        for i in 0..4 {
+            let player_id = format!("p{}", i + 1);
+            let card = game.get_player(&player_id).unwrap().draft_hand[0].clone();
+            game.process_draft_selection(&player_id, vec![card], DraftType::Standard).unwrap();
+        }
+
+        // Should have moved to round 2
+        assert_eq!(game.draft_round, 2);
+        for player in &game.players {
+            assert_eq!(player.draft_hand.len(), 3);
+            assert_eq!(player.drafted_cards.len(), 1);
+        }
+    }
+
+    #[test]
+    fn test_standard_draft_four_players_completion() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string(), "Player 4".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Start standard draft
+        game.start_draft(DraftType::Standard).unwrap();
+
+        // Draft all 4 rounds
+        loop {
+            let mut all_done = false;
+            
+            // All four players draft
+            for i in 0..4 {
+                let player_id = format!("p{}", i + 1);
+                let player = game.get_player(&player_id).unwrap();
+                
+                // Check if player has cards to draft
+                if player.draft_hand.is_empty() {
+                    all_done = true;
+                    break;
+                }
+                
+                let card = player.draft_hand[0].clone();
+                let done = game.process_draft_selection(&player_id, vec![card], DraftType::Standard).unwrap();
+                
+                if done {
+                    all_done = true;
+                    break;
+                }
+            }
+            
+            if all_done {
+                break;
+            }
+        }
+
+        // After completion, all players should have 4 drafted cards
+        for player in &game.players {
+            assert_eq!(player.drafted_cards.len(), 4);
+            assert!(player.draft_hand.is_empty());
+            assert!(!player.needs_to_draft);
+        }
+    }
+
+    #[test]
+    fn test_standard_draft_four_players_card_passing_after() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string(), "Player 4".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Set up draft hands manually
+        game.players[0].draft_hand = vec!["card1".to_string(), "card2".to_string(), "card3".to_string()];
+        game.players[1].draft_hand = vec!["card4".to_string(), "card5".to_string(), "card6".to_string()];
+        game.players[2].draft_hand = vec!["card7".to_string(), "card8".to_string(), "card9".to_string()];
+        game.players[3].draft_hand = vec!["card10".to_string(), "card11".to_string(), "card12".to_string()];
+
+        // Set generation to 2 (even) so we pass after (clockwise)
+        game.generation = 2;
+        game.draft_round = 2; // Not first round, so we pass cards
+
+        // Pass cards
+        game.pass_draft_cards(DraftType::Standard).unwrap();
+
+        // After passing clockwise: P1 gets P4's cards, P2 gets P1's cards, P3 gets P2's cards, P4 gets P3's cards
+        assert_eq!(game.players[0].draft_hand, vec!["card10", "card11", "card12"]);
+        assert_eq!(game.players[1].draft_hand, vec!["card1", "card2", "card3"]);
+        assert_eq!(game.players[2].draft_hand, vec!["card4", "card5", "card6"]);
+        assert_eq!(game.players[3].draft_hand, vec!["card7", "card8", "card9"]);
+    }
+
+    #[test]
+    fn test_standard_draft_four_players_card_passing_before() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string(), "Player 3".to_string(), "Player 4".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Set up draft hands manually
+        game.players[0].draft_hand = vec!["card1".to_string(), "card2".to_string(), "card3".to_string()];
+        game.players[1].draft_hand = vec!["card4".to_string(), "card5".to_string(), "card6".to_string()];
+        game.players[2].draft_hand = vec!["card7".to_string(), "card8".to_string(), "card9".to_string()];
+        game.players[3].draft_hand = vec!["card10".to_string(), "card11".to_string(), "card12".to_string()];
+
+        // Set generation to 1 (odd) so we pass before (counter-clockwise)
+        game.generation = 1;
+        game.draft_round = 2; // Not first round, so we pass cards
+
+        // Pass cards
+        game.pass_draft_cards(DraftType::Standard).unwrap();
+
+        // After passing counter-clockwise: P1 gets P2's cards, P2 gets P3's cards, P3 gets P4's cards, P4 gets P1's cards
+        assert_eq!(game.players[0].draft_hand, vec!["card4", "card5", "card6"]);
+        assert_eq!(game.players[1].draft_hand, vec!["card7", "card8", "card9"]);
+        assert_eq!(game.players[2].draft_hand, vec!["card10", "card11", "card12"]);
+        assert_eq!(game.players[3].draft_hand, vec!["card1", "card2", "card3"]);
+    }
 }
 
