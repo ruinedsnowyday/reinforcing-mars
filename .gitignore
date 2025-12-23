@@ -1,3 +1,7 @@
+# Multi-language project: Python + Rust
+# This repository contains both Python code and a Rust simulation module in simulation/
+
+# Python
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -73,7 +77,7 @@ docs/_build/
 
 # PyBuilder
 .pybuilder/
-target/
+target/  # Note: Rust target/ directories are handled in Rust section below
 
 # Jupyter Notebook
 .ipynb_checkpoints
@@ -83,9 +87,7 @@ profile_default/
 ipython_config.py
 
 # pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
+.python-version
 
 # pipenv
 #   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
@@ -181,12 +183,16 @@ cython_debug/
 # Learn more at https://abstra.io/docs
 .abstra/
 
+# ============================================================================
+# Editor / IDE Configuration
+# ============================================================================
+
 # Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#  you could uncomment the following to ignore the entire vscode folder
-# .vscode/
+.vscode/
+*.code-workspace
+
+# Cursor
+.cursor/
 
 # Ruff stuff:
 .ruff_cache/
@@ -194,10 +200,8 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
+# Cursor ignore files (these are configuration files, typically committed)
+# .cursorignore and .cursorindexingignore are usually committed to version control
 .cursorignore
 .cursorindexingignore
 
@@ -205,3 +209,35 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+# ============================================================================
+# Rust / Cargo
+# ============================================================================
+# Build output directory (contains compiled artifacts)
+/target/
+**/target/
+
+Cargo.lock
+
+# Backup files created by rustfmt
+**/*.rs.bk
+
+# Cargo local configuration directory
+.cargo/
+
+# Rust build artifacts
+*.pdb
+**/*.rlib
+**/*.dll
+**/*.so
+**/*.dylib
+
+# Rust test and coverage artifacts
+**/test-results/
+**/coverage/
+**/*.gcda
+**/*.gcno
+
+# Rust-analyzer (LSP) cache
+.rust-analyzer/

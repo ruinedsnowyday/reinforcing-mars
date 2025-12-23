@@ -1,0 +1,16 @@
+[package]
+name = "reinforcing_mars_sim"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "reinforcing_mars_sim"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+rand = "0.8"
+thiserror = "1.0"
+
+[dev-dependencies]
+
