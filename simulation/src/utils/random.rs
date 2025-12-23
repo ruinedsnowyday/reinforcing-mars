@@ -2,8 +2,23 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
 
 /// Seeded random number generator for reproducible games
+#[derive(Debug)]
 pub struct SeededRandom {
     rng: StdRng,
+    seed: u64,
+}
+
+impl Clone for SeededRandom {
+    fn clone(&self) -> Self {
+        // Recreate from seed to ensure proper cloning
+        Self::new(self.seed)
+    }
+}
+
+impl Default for SeededRandom {
+    fn default() -> Self {
+        Self::new(0)
+    }
 }
 
 impl SeededRandom {
@@ -11,6 +26,7 @@ impl SeededRandom {
     pub fn new(seed: u64) -> Self {
         Self {
             rng: StdRng::seed_from_u64(seed),
+            seed,
         }
     }
 

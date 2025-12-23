@@ -5,4 +5,5 @@ pub mod board;
 
 pub use space::{Space, SpaceBonus, SpaceId, SpaceType};
 pub use tile::Tile;
+pub use board::{Board, BoardType};
 
