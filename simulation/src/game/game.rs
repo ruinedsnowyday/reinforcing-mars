@@ -5,6 +5,7 @@ use crate::game::milestones::{MilestoneData, ClaimedMilestone};
 use crate::game::awards::{AwardData, FundedAward};
 use crate::board::{Board, BoardType};
 use crate::utils::random::SeededRandom;
+use crate::actions::{Action, ActionExecutor};
 
 /// Game struct - tracks game state
 /// This is a skeleton implementation for Phase 1
@@ -389,6 +390,42 @@ impl Game {
         Ok(())
     }
 
+    /// Execute an action during the action phase
+    /// 
+    /// This is the main entry point for players to take actions during their turn.
+    /// 
+    /// Per rulebook: "You can choose to take 1 or 2 actions on your turn."
+    /// Note: Action limit tracking (1-2 actions per turn) will be implemented later.
+    /// For now, players can take actions until they pass.
+    /// 
+    /// Returns:
+    /// - `Ok(())` if action executed successfully
+    /// - `Err(...)` if action is invalid or cannot be executed
+    pub fn execute_action(&mut self, action: &Action) -> Result<(), String> {
+        if self.phase != Phase::Action {
+            return Err("Not in action phase".to_string());
+        }
+
+        // Get active player ID (clone to avoid borrow issues)
+        let player_id = self.active_player_id
+            .as_ref()
+            .ok_or("No active player")?
+            .clone();
+
+        // Handle Pass action specially
+        if action.is_pass() {
+            return self.pass_player();
+        }
+
+        // Execute the action
+        ActionExecutor::execute(action, self, &player_id)?;
+
+        // Note: Action limit tracking (1-2 actions per turn) will be implemented later
+        // For now, players can take multiple actions until they pass
+
+        Ok(())
+    }
+
     /// Check if all players have passed
     pub fn all_players_passed(&self) -> bool {
         self.passed_players.len() >= self.players.len()
@@ -415,30 +452,72 @@ impl Game {
     }
 
     /// Execute the Intergeneration phase
-    /// This includes: incrementing generation, checking win conditions, calculating VP, determining winner
+    /// 
+    /// Per plan requirements:
+    /// 1. Check win conditions (before incrementing generation)
+    /// 2. Increment generation
+    /// 3. Reset player states (passed players, draft state, etc.)
+    /// 4. Check win conditions again (after incrementing)
+    /// 5. Calculate victory points for all players (for tracking/display)
+    /// 6. Determine winner (if game ended)
+    /// 7. Transition to next phase (Drafting or Research based on draft variant)
+    /// 
+    /// Win conditions:
+    /// - Multiplayer: All global parameters maxed (oceans, oxygen, temperature, venus if enabled)
+    /// - Solo mode: Player reaches TR63 OR all global parameters maxed
+    /// 
+    /// Returns:
+    /// - `Ok(Some(win_condition))` if game ended
+    /// - `Ok(None)` if game continues
+    /// - `Err(...)` if not in intergeneration phase or phase transition failed
     pub fn execute_intergeneration_phase(&mut self) -> Result<Option<WinCondition>, String> {
         if self.phase != Phase::Intergeneration {
             return Err("Not in intergeneration phase".to_string());
         }
 
-        // Check win conditions before incrementing generation
+        // Step 1: Check win conditions before incrementing generation
+        // This catches win conditions that occurred during the previous generation
         if let Some(win_condition) = self.check_win_conditions() {
             // Game is over, transition to End phase
+            // Calculate final victory points and determine winner
+            let _vps = self.calculate_victory_points();
+            let _winner = self.determine_winner();
+            // Note: VP and winner are calculated but not stored here
+            // They will be calculated again at game end for final scoring
+            
             self.phase = Phase::End;
             return Ok(Some(win_condition));
         }
 
-        // Increment generation and reset player states
+        // Step 2: Increment generation and reset player states
+        // This includes:
+        // - Incrementing generation counter
+        // - Resetting passed players
+        // - Clearing draft state (draft_hand, drafted_cards, needs_to_draft)
+        // - Resetting draft round counter
         self.increment_generation();
 
-        // Check win conditions again after incrementing
+        // Step 3: Check win conditions again after incrementing
+        // This catches win conditions that might have been triggered by generation increment
+        // (though currently generation increment doesn't trigger win conditions)
         if let Some(win_condition) = self.check_win_conditions() {
             // Game is over, transition to End phase
+            let _vps = self.calculate_victory_points();
+            let _winner = self.determine_winner();
+            
             self.phase = Phase::End;
             return Ok(Some(win_condition));
         }
 
-        // Game continues, transition to next phase (Drafting or Research)
+        // Step 4: Calculate victory points for all players (for tracking/display)
+        // This is done each generation to track VP progression
+        // Note: VP calculation is currently basic (TR only), will be expanded in later phases
+        let _vps = self.calculate_victory_points();
+        // TODO: Store VP per generation for statistics (similar to TypeScript's globalsPerGeneration)
+
+        // Step 5: Game continues, transition to next phase
+        // - If draft variant: go to Drafting phase
+        // - If no-draft variant: go directly to Research phase
         self.next_phase()?;
 
         Ok(None)
@@ -1638,6 +1717,453 @@ mod tests {
 
         // Player 2 should win
         assert_eq!(game.determine_winner(), Some("p2".to_string()));
+    }
+
+    #[test]
+    fn test_execute_action_pass() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string(), "Player 2".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let pass_action = Action::Pass;
+        assert!(game.execute_action(&pass_action).is_ok());
+        // Should have moved to next player
+        assert_ne!(game.active_player_id, Some("p1".to_string()));
+    }
+
+    #[test]
+    fn test_execute_action_wrong_phase() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Research;
+        let pass_action = Action::Pass;
+        assert!(game.execute_action(&pass_action).is_err());
+    }
+
+    #[test]
+    fn test_execute_action_convert_heat() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let player = game.get_player_mut(&"p1".to_string()).unwrap();
+        player.resources.add(crate::player::resources::Resource::Heat, 8);
+        let initial_tr = player.terraform_rating;
+
+        let convert_heat_action = Action::ConvertHeat;
+        assert!(game.execute_action(&convert_heat_action).is_ok());
+
+        let player = game.get_player(&"p1".to_string()).unwrap();
+        assert_eq!(player.resources.get(crate::player::resources::Resource::Heat), 0);
+        assert_eq!(player.terraform_rating, initial_tr + 1);
+    }
+
+    #[test]
+    fn test_execute_action_convert_plants() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let player = game.get_player_mut(&"p1".to_string()).unwrap();
+        player.resources.add(crate::player::resources::Resource::Plants, 8);
+        let initial_oxygen = game.global_parameters.get(
+            crate::game::global_params::GlobalParameter::Oxygen,
+        );
+
+        let convert_plants_action = Action::ConvertPlants;
+        assert!(game.execute_action(&convert_plants_action).is_ok());
+
+        let player = game.get_player(&"p1".to_string()).unwrap();
+        assert_eq!(player.resources.get(crate::player::resources::Resource::Plants), 0);
+        // Oxygen should have increased
+        assert_eq!(
+            game.global_parameters.get(crate::game::global_params::GlobalParameter::Oxygen),
+            initial_oxygen + 1
+        );
+    }
+
+    #[test]
+    fn test_execute_action_sell_patents() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let player = game.get_player_mut(&"p1".to_string()).unwrap();
+        player.add_card_to_hand("card1".to_string());
+        player.add_card_to_hand("card2".to_string());
+        let initial_mc = player.resources.megacredits;
+
+        let sell_patents_action = Action::StandardProject {
+            project_type: crate::actions::action::StandardProjectType::SellPatents,
+            payment: crate::actions::payment::Payment::default(),
+            params: crate::actions::action::StandardProjectParams {
+                card_ids: vec!["card1".to_string(), "card2".to_string()],
+            },
+        };
+        assert!(game.execute_action(&sell_patents_action).is_ok());
+
+        let player = game.get_player(&"p1".to_string()).unwrap();
+        assert_eq!(player.cards_in_hand.len(), 0);
+        assert_eq!(player.resources.megacredits, initial_mc + 2); // 1 M€ per card
+    }
+
+    #[test]
+    fn test_execute_action_power_plant() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let player = game.get_player_mut(&"p1".to_string()).unwrap();
+        player.resources.add(crate::player::resources::Resource::Megacredits, 11);
+        let initial_energy_prod = player.production.energy;
+
+        let power_plant_action = Action::StandardProject {
+            project_type: crate::actions::action::StandardProjectType::PowerPlant,
+            payment: crate::actions::payment::Payment::with_megacredits(11),
+            params: crate::actions::action::StandardProjectParams::default(),
+        };
+        assert!(game.execute_action(&power_plant_action).is_ok());
+
+        let player = game.get_player(&"p1".to_string()).unwrap();
+        assert_eq!(player.resources.megacredits, 0);
+        assert_eq!(player.production.energy, initial_energy_prod + 1);
+    }
+
+    #[test]
+    fn test_execute_action_asteroid() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let player = game.get_player_mut(&"p1".to_string()).unwrap();
+        player.resources.add(crate::player::resources::Resource::Megacredits, 14);
+        let initial_temp = game.global_parameters.get(
+            crate::game::global_params::GlobalParameter::Temperature,
+        );
+
+        let asteroid_action = Action::StandardProject {
+            project_type: crate::actions::action::StandardProjectType::Asteroid,
+            payment: crate::actions::payment::Payment::with_megacredits(14),
+            params: crate::actions::action::StandardProjectParams::default(),
+        };
+        assert!(game.execute_action(&asteroid_action).is_ok());
+
+        // Temperature should have increased
+        // Note: Temperature increases in steps of 2, so 1 step = +2 temperature
+        assert_eq!(
+            game.global_parameters.get(crate::game::global_params::GlobalParameter::Temperature),
+            initial_temp + 2 // 1 step = +2 temperature
+        );
+    }
+
+    #[test]
+    fn test_execute_action_aquifer() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let player = game.get_player_mut(&"p1".to_string()).unwrap();
+        player.resources.add(crate::player::resources::Resource::Megacredits, 18);
+        let initial_oceans = game.global_parameters.get(
+            crate::game::global_params::GlobalParameter::Oceans,
+        );
+
+        let aquifer_action = Action::StandardProject {
+            project_type: crate::actions::action::StandardProjectType::Aquifer,
+            payment: crate::actions::payment::Payment::with_megacredits(18),
+            params: crate::actions::action::StandardProjectParams::default(),
+        };
+        assert!(game.execute_action(&aquifer_action).is_ok());
+
+        // Oceans should have increased
+        assert_eq!(
+            game.global_parameters.get(crate::game::global_params::GlobalParameter::Oceans),
+            initial_oceans + 1
+        );
+    }
+
+    #[test]
+    fn test_execute_action_greenery() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let player = game.get_player_mut(&"p1".to_string()).unwrap();
+        player.resources.add(crate::player::resources::Resource::Megacredits, 23);
+        let initial_oxygen = game.global_parameters.get(
+            crate::game::global_params::GlobalParameter::Oxygen,
+        );
+
+        let greenery_action = Action::StandardProject {
+            project_type: crate::actions::action::StandardProjectType::Greenery,
+            payment: crate::actions::payment::Payment::with_megacredits(23),
+            params: crate::actions::action::StandardProjectParams::default(),
+        };
+        assert!(game.execute_action(&greenery_action).is_ok());
+
+        // Oxygen should have increased
+        assert_eq!(
+            game.global_parameters.get(crate::game::global_params::GlobalParameter::Oxygen),
+            initial_oxygen + 1
+        );
+    }
+
+    #[test]
+    fn test_execute_action_city() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let player = game.get_player_mut(&"p1".to_string()).unwrap();
+        player.resources.add(crate::player::resources::Resource::Megacredits, 25);
+
+        let city_action = Action::StandardProject {
+            project_type: crate::actions::action::StandardProjectType::City,
+            payment: crate::actions::payment::Payment::with_megacredits(25),
+            params: crate::actions::action::StandardProjectParams::default(),
+        };
+        assert!(game.execute_action(&city_action).is_ok());
+
+        // City placement doesn't change global parameters (just places tile)
+        // Payment should be deducted
+        let player = game.get_player(&"p1".to_string()).unwrap();
+        assert_eq!(player.resources.megacredits, 0);
+    }
+
+    #[test]
+    fn test_execute_action_sell_patents_zero_cards() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        // Empty hand
+        let sell_patents_action = Action::StandardProject {
+            project_type: crate::actions::action::StandardProjectType::SellPatents,
+            payment: crate::actions::payment::Payment::default(),
+            params: crate::actions::action::StandardProjectParams {
+                card_ids: vec![],
+            },
+        };
+        assert!(game.execute_action(&sell_patents_action).is_err());
+    }
+
+    #[test]
+    fn test_execute_action_sell_patents_one_card() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let player = game.get_player_mut(&"p1".to_string()).unwrap();
+        player.add_card_to_hand("card1".to_string());
+        let initial_mc = player.resources.megacredits;
+
+        let sell_patents_action = Action::StandardProject {
+            project_type: crate::actions::action::StandardProjectType::SellPatents,
+            payment: crate::actions::payment::Payment::default(),
+            params: crate::actions::action::StandardProjectParams {
+                card_ids: vec!["card1".to_string()],
+            },
+        };
+        assert!(game.execute_action(&sell_patents_action).is_ok());
+
+        let player = game.get_player(&"p1".to_string()).unwrap();
+        assert_eq!(player.cards_in_hand.len(), 0);
+        assert_eq!(player.resources.megacredits, initial_mc + 1); // 1 M€ per card
+    }
+
+    #[test]
+    fn test_execute_action_sell_patents_all_cards() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let player = game.get_player_mut(&"p1".to_string()).unwrap();
+        player.add_card_to_hand("card1".to_string());
+        player.add_card_to_hand("card2".to_string());
+        player.add_card_to_hand("card3".to_string());
+        let initial_mc = player.resources.megacredits;
+
+        // Discard all cards
+        let sell_patents_action = Action::StandardProject {
+            project_type: crate::actions::action::StandardProjectType::SellPatents,
+            payment: crate::actions::payment::Payment::default(),
+            params: crate::actions::action::StandardProjectParams {
+                card_ids: vec!["card1".to_string(), "card2".to_string(), "card3".to_string()],
+            },
+        };
+        assert!(game.execute_action(&sell_patents_action).is_ok());
+
+        let player = game.get_player(&"p1".to_string()).unwrap();
+        assert_eq!(player.cards_in_hand.len(), 0);
+        assert_eq!(player.resources.megacredits, initial_mc + 3); // 3 M€ for 3 cards
+    }
+
+    #[test]
+    fn test_execute_action_milestone_claiming() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Add a milestone
+        game.milestones.push(crate::game::milestones::MilestoneData {
+            name: "test_milestone".to_string(),
+            cost: 8,
+        });
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let player = game.get_player_mut(&"p1".to_string()).unwrap();
+        player.resources.add(crate::player::resources::Resource::Megacredits, 8);
+
+        // Claim milestone
+        let action = Action::ClaimMilestone {
+            milestone_id: "test_milestone".to_string(),
+            payment: crate::actions::payment::Payment::with_megacredits(8),
+        };
+        assert!(game.execute_action(&action).is_ok());
+
+        // Verify milestone was claimed
+        assert_eq!(game.claimed_milestones.len(), 1);
+        assert_eq!(game.claimed_milestones[0].player_id, "p1");
+        assert_eq!(game.claimed_milestones[0].milestone_name, "test_milestone");
+
+        // Verify payment was deducted
+        let player = game.get_player(&"p1".to_string()).unwrap();
+        assert_eq!(player.resources.megacredits, 0);
+    }
+
+    #[test]
+    fn test_execute_action_award_funding() {
+        let mut game = Game::new(
+            "game1".to_string(),
+            vec!["Player 1".to_string()],
+            12345,
+            BoardType::Tharsis,
+            false, false, false, false, false, false, false, false,
+        );
+
+        // Add an award
+        game.awards.push(crate::game::awards::AwardData {
+            name: "test_award".to_string(),
+            funding_cost: 8,
+        });
+
+        game.phase = Phase::Action;
+        game.start_action_phase().unwrap();
+
+        let player = game.get_player_mut(&"p1".to_string()).unwrap();
+        player.resources.add(crate::player::resources::Resource::Megacredits, 8);
+
+        // Fund award
+        let action = Action::FundAward {
+            award_id: "test_award".to_string(),
+            payment: crate::actions::payment::Payment::with_megacredits(8),
+        };
+        assert!(game.execute_action(&action).is_ok());
+
+        // Verify award was funded
+        assert_eq!(game.funded_awards.len(), 1);
+        assert_eq!(game.funded_awards[0].player_id, "p1");
+        assert_eq!(game.funded_awards[0].award_name, "test_award");
+
+        // Verify payment was deducted
+        let player = game.get_player(&"p1".to_string()).unwrap();
+        assert_eq!(player.resources.megacredits, 0);
     }
 }
 

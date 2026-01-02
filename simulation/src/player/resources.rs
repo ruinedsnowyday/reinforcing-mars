@@ -3,9 +3,9 @@
 pub enum Resource {
     /// MegaCredits - the standard currency
     Megacredits,
-    /// Steel - used for building tags (2:1 conversion to M€)
+    /// Steel - used for building tags (1:2 conversion to M€: 1 steel = 2 M€)
     Steel,
-    /// Titanium - used for space tags (3:1 conversion to M€)
+    /// Titanium - used for space tags (1:3 conversion to M€: 1 titanium = 3 M€)
     Titanium,
     /// Plants - used for greenery tiles
     Plants,
