@@ -415,15 +415,10 @@ impl Game {
 
         // Phase 6: Check deferred action queue before allowing player actions
         // Execute deferred actions in priority order until queue is empty or an action needs input
-        // Note: We check the queue but don't execute here - execution happens in a separate method
-        // to avoid borrow checker conflicts. For now, we just check if queue is empty.
-        // Full integration will be completed when we have a proper game loop.
-        if !self.deferred_actions.is_empty() {
-            // For Phase 6, we'll allow the action but note that deferred actions should be executed first
-            // In a full implementation, this would execute deferred actions before allowing player actions
-            // For now, we'll just warn that deferred actions are pending
-            // TODO: Implement proper deferred action execution before player actions
-        }
+        // 
+        // We use process_deferred_actions which processes actions one at a time to avoid
+        // borrow checker conflicts (pops action, executes it, re-inserts only if needed)
+        self.process_deferred_actions()?;
 
         // Get active player ID (clone to avoid borrow issues)
         let player_id = self.active_player_id
@@ -454,6 +449,57 @@ impl Game {
     /// Check if there are deferred actions pending
     pub fn has_deferred_actions(&self) -> bool {
         !self.deferred_actions.is_empty()
+    }
+
+    /// Process deferred actions in priority order
+    /// Executes all deferred actions that can be executed immediately
+    /// Stops if an action needs player input
+    /// Returns Ok(()) if all actions completed or queue is empty
+    /// Returns Err(...) if an action needs input
+    /// 
+    /// This method processes actions one at a time to avoid borrow checker conflicts.
+    /// It should be called from the game loop before allowing player actions.
+    pub fn process_deferred_actions(&mut self) -> Result<(), String> {
+        // Process actions until queue is empty or one needs input
+        // We manually process one at a time to avoid borrow conflicts
+        loop {
+            if self.deferred_actions.is_empty() {
+                break;
+            }
+            
+            // Pop action from queue (this borrows deferred_actions mutably)
+            let mut action = match self.deferred_actions.pop_next_action() {
+                Some(action) => action,
+                None => break,
+            };
+            
+            // Execute the action (this borrows self mutably, but action is no longer in queue)
+            let result = action.execute(self);
+            
+            // Handle result
+            match result {
+                Ok(DeferredActionResult::Completed) => {
+                    // Action completed, continue with next
+                    continue;
+                }
+                Ok(DeferredActionResult::NeedsInput) => {
+                    // Action needs input, re-insert at front and stop
+                    self.deferred_actions.push_front_action(action);
+                    return Err("Deferred action needs player input".to_string());
+                }
+                Ok(DeferredActionResult::Remove) => {
+                    // Action requested removal, continue
+                    continue;
+                }
+                Err(e) => {
+                    // Action failed, log and continue
+                    eprintln!("Deferred action failed: {}", e);
+                    continue;
+                }
+            }
+        }
+        
+        Ok(())
     }
 
     /// Check if all players have passed

@@ -99,36 +99,67 @@ impl DeferredActionQueue {
 
     /// Execute all deferred actions in the queue until it's empty or an action needs input
     /// Returns the number of actions executed
-    pub fn execute_all(&mut self, game: &mut Game) -> usize {
+    /// 
+    /// Note: This method takes a closure to avoid borrow checker conflicts when called from Game
+    pub fn execute_all_with<F>(&mut self, mut execute_fn: F) -> usize
+    where
+        F: FnMut(&mut dyn DeferredAction) -> Result<DeferredActionResult, String>,
+    {
         let mut executed = 0;
         while !self.queue.is_empty() {
-            match self.execute_next(game) {
-                Some(Ok(DeferredActionResult::Completed)) => {
+            let mut entry = self.queue.pop_front().unwrap();
+            let result = execute_fn(entry.action.as_mut());
+            
+            match result {
+                Ok(DeferredActionResult::Completed) => {
                     executed += 1;
+                    // Action completed, don't re-insert
                 }
-                Some(Ok(DeferredActionResult::NeedsInput)) => {
-                    // Stop execution, action needs player input
+                Ok(DeferredActionResult::NeedsInput) => {
+                    // Action needs player input, re-insert at front and stop
+                    self.queue.push_front(entry);
                     break;
                 }
-                Some(Ok(DeferredActionResult::Remove)) => {
+                Ok(DeferredActionResult::Remove) => {
                     executed += 1;
+                    // Action requested removal, don't re-insert
                 }
-                Some(Err(_)) => {
-                    // Action failed, continue with next
+                Err(_) => {
                     executed += 1;
-                }
-                None => {
-                    // Queue is empty
-                    break;
+                    // Action failed, don't re-insert
                 }
             }
         }
         executed
     }
 
+    /// Execute all deferred actions in the queue until it's empty or an action needs input
+    /// Returns the number of actions executed
+    /// 
+    /// This is a convenience method that calls execute_all_with
+    pub fn execute_all(&mut self, game: &mut Game) -> usize {
+        self.execute_all_with(|action| action.execute(game))
+    }
+
     /// Get the next action's priority (if any)
     pub fn next_priority(&self) -> Option<Priority> {
         self.queue.front().map(|e| e.action.priority())
+    }
+
+    /// Pop the next action from the queue (for manual processing)
+    /// Returns None if queue is empty
+    /// This allows processing actions outside the queue to avoid borrow conflicts
+    pub fn pop_next_action(&mut self) -> Option<Box<dyn DeferredAction>> {
+        self.queue.pop_front().map(|entry| entry.action)
+    }
+
+    /// Re-insert an action at the front of the queue (for actions that need input)
+    /// This maintains priority order by inserting at the front
+    pub fn push_front_action(&mut self, action: Box<dyn DeferredAction>) {
+        let insertion_order = self.insertion_counter;
+        self.insertion_counter += 1;
+        let entry = QueueEntry::new(action, insertion_order);
+        self.queue.push_front(entry);
     }
 }
 

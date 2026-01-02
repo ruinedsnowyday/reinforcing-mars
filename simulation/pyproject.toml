@@ -1,0 +1,23 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "reinforcing-mars-sim"
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: Implementation :: CPython",
+    "Programming Language :: Python :: Implementation :: PyPy",
+]
+
+[tool.maturin]
+features = ["pyo3"]
+module-name = "reinforcing_mars_sim"
+compatibility = "linux"
+
+# Note: When using uv, you can build with:
+#   maturin build --features pyo3
+#   uv pip install target/wheels/*.whl
+# Or use uv to manage the environment and then maturin develop
+
