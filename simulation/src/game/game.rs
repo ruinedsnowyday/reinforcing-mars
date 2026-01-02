@@ -6,10 +6,11 @@ use crate::game::awards::{AwardData, FundedAward};
 use crate::board::{Board, BoardType};
 use crate::utils::random::SeededRandom;
 use crate::actions::{Action, ActionExecutor};
+use crate::deferred::{DeferredActionQueue, DeferredAction, DeferredActionResult};
 
 /// Game struct - tracks game state
 /// This is a skeleton implementation for Phase 1
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Game {
     /// Game ID
     pub id: String,
@@ -76,6 +77,11 @@ pub struct Game {
     /// 2 = second project card iteration
     /// 3 = prelude draft (if enabled)
     pub initial_draft_iteration: u32,
+    
+    /// Deferred action queue (Phase 6)
+    /// Note: Cannot be serialized (contains trait objects)
+    #[serde(skip)]
+    pub deferred_actions: DeferredActionQueue,
 }
 
 impl Game {
@@ -151,6 +157,7 @@ impl Game {
             neutral_player,
             draft_round: 1,
             initial_draft_iteration: 1,
+            deferred_actions: DeferredActionQueue::new(),
         }
     }
 
@@ -406,6 +413,18 @@ impl Game {
             return Err("Not in action phase".to_string());
         }
 
+        // Phase 6: Check deferred action queue before allowing player actions
+        // Execute deferred actions in priority order until queue is empty or an action needs input
+        // Note: We check the queue but don't execute here - execution happens in a separate method
+        // to avoid borrow checker conflicts. For now, we just check if queue is empty.
+        // Full integration will be completed when we have a proper game loop.
+        if !self.deferred_actions.is_empty() {
+            // For Phase 6, we'll allow the action but note that deferred actions should be executed first
+            // In a full implementation, this would execute deferred actions before allowing player actions
+            // For now, we'll just warn that deferred actions are pending
+            // TODO: Implement proper deferred action execution before player actions
+        }
+
         // Get active player ID (clone to avoid borrow issues)
         let player_id = self.active_player_id
             .as_ref()
@@ -424,6 +443,17 @@ impl Game {
         // For now, players can take multiple actions until they pass
 
         Ok(())
+    }
+
+    /// Defer an action to be executed before player actions
+    /// This is the main entry point for adding deferred actions
+    pub fn defer(&mut self, action: Box<dyn DeferredAction>) {
+        self.deferred_actions.push(action);
+    }
+
+    /// Check if there are deferred actions pending
+    pub fn has_deferred_actions(&self) -> bool {
+        !self.deferred_actions.is_empty()
     }
 
     /// Check if all players have passed
