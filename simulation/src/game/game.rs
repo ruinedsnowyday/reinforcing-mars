@@ -30,6 +30,9 @@ pub struct Game {
     /// Players who have passed in the current action phase
     pub passed_players: Vec<PlayerId>,
     
+    /// Actions taken by current active player this turn (1-2 max)
+    pub actions_taken_this_turn: u32,
+    
     /// Global parameters
     pub global_parameters: GlobalParameters,
     
@@ -138,6 +141,7 @@ impl Game {
             generation: 1,
             active_player_id,
             passed_players: Vec::new(),
+            actions_taken_this_turn: 0,
             global_parameters: GlobalParameters::new(),
             board,
             rng_seed,
@@ -352,6 +356,8 @@ impl Game {
             // If this player hasn't passed, make them active
             if !self.passed_players.contains(next_player_id) {
                 self.active_player_id = Some(next_player_id.clone());
+                // Reset action count for new player
+                self.actions_taken_this_turn = 0;
                 return;
             }
         }
@@ -369,6 +375,9 @@ impl Game {
 
         // Reset passed players
         self.reset_passed_players();
+        
+        // Reset action count
+        self.actions_taken_this_turn = 0;
 
         // Set active player to first player
         if let Some(first_player) = self.players.first() {
@@ -403,8 +412,6 @@ impl Game {
     /// This is the main entry point for players to take actions during their turn.
     /// 
     /// Per rulebook: "You can choose to take 1 or 2 actions on your turn."
-    /// Note: Action limit tracking (1-2 actions per turn) will be implemented later.
-    /// For now, players can take actions until they pass.
     /// 
     /// Returns:
     /// - `Ok(())` if action executed successfully
@@ -432,13 +439,28 @@ impl Game {
             return self.pass_player();
         }
 
+        // Check action limit (1-2 actions per turn)
+        if self.actions_taken_this_turn >= 2 {
+            return Err("Action limit reached: players can take at most 2 actions per turn".to_string());
+        }
+
         // Execute the action
         ActionExecutor::execute(action, self, &player_id)?;
 
-        // Note: Action limit tracking (1-2 actions per turn) will be implemented later
-        // For now, players can take multiple actions until they pass
+        // Increment action count
+        self.actions_taken_this_turn += 1;
 
         Ok(())
+    }
+    
+    /// Get number of actions taken by current active player this turn
+    pub fn actions_taken_this_turn(&self) -> u32 {
+        self.actions_taken_this_turn
+    }
+    
+    /// Check if current player can take more actions
+    pub fn can_take_action(&self) -> bool {
+        self.actions_taken_this_turn < 2
     }
 
     /// Defer an action to be executed before player actions
@@ -511,6 +533,117 @@ impl Game {
     /// Reset passed players (for new action phase)
     pub fn reset_passed_players(&mut self) {
         self.passed_players.clear();
+    }
+
+    /// Automatically complete research phase by selecting first available options
+    /// This is useful for testing and RL training where we want to skip manual selection
+    pub fn auto_complete_research_phase(&mut self) -> Result<(), String> {
+        if self.phase != Phase::Research {
+            return Err("Not in research phase".to_string());
+        }
+
+        // For each player, auto-select first available options
+        for player in &mut self.players {
+            // Generation 1: need corporation and preludes (if enabled)
+            if self.generation == 1 {
+                // Select first corporation if none selected
+                if player.selected_corporation.is_none() && !player.dealt_corporation_cards.is_empty() {
+                    player.selected_corporation = Some(player.dealt_corporation_cards[0].clone());
+                }
+                
+                // Select first 2 preludes if enabled and not selected
+                if self.prelude && player.selected_preludes.len() < 2 && !player.dealt_prelude_cards.is_empty() {
+                    let needed = 2 - player.selected_preludes.len();
+                    for i in 0..needed.min(player.dealt_prelude_cards.len()) {
+                        if !player.selected_preludes.contains(&player.dealt_prelude_cards[i]) {
+                            player.selected_preludes.push(player.dealt_prelude_cards[i].clone());
+                        }
+                    }
+                }
+            }
+            // For generation 2+, research phase is optional (no auto-selection needed)
+        }
+
+        // Complete research phase and transition
+        self.complete_research_phase()?;
+        Ok(())
+    }
+
+    /// Automatically progress to next phase if conditions are met
+    /// Returns true if phase was advanced, false if conditions not met
+    pub fn try_advance_phase(&mut self) -> Result<bool, String> {
+        match self.phase {
+            Phase::InitialDrafting => {
+                // Auto-advance to Research
+                self.next_phase()?;
+                Ok(true)
+            }
+            Phase::Research => {
+                // Check if all players have completed research
+                if self.all_players_research_complete() {
+                    self.complete_research_phase()?;
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            }
+            Phase::Preludes => {
+                // Check if all players have played preludes
+                if self.all_players_played_preludes() {
+                    self.complete_preludes_phase()?;
+                    Ok(true)
+                } else {
+                    Ok(false)
+                }
+            }
+            Phase::Action => {
+                // Action phase advances when all players pass (handled in pass_player)
+                Ok(false)
+            }
+            Phase::Production => {
+                // Auto-advance after production
+                self.complete_production_phase()?;
+                Ok(true)
+            }
+            Phase::Solar => {
+                // Auto-advance solar phase
+                self.execute_solar_phase()?;
+                Ok(true)
+            }
+            Phase::Intergeneration => {
+                // Auto-advance intergeneration
+                self.complete_intergeneration_phase()?;
+                Ok(true)
+            }
+            Phase::Drafting => {
+                // Drafting phase needs manual completion
+                Ok(false)
+            }
+            Phase::End => {
+                Ok(false)
+            }
+        }
+    }
+
+    /// Complete intergeneration phase and advance to next generation
+    pub fn complete_intergeneration_phase(&mut self) -> Result<(), String> {
+        if self.phase != Phase::Intergeneration {
+            return Err("Not in intergeneration phase".to_string());
+        }
+
+        // Increment generation
+        self.generation += 1;
+
+        // Transition to next phase based on draft variant
+        if self.draft_variant {
+            self.phase = Phase::Drafting;
+        } else {
+            self.phase = Phase::Research;
+            // Start research phase
+            self.start_research_phase()?;
+        }
+
+        Ok(())
     }
 
     /// Increment generation and reset for next generation

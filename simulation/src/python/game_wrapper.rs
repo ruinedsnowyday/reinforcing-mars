@@ -214,6 +214,14 @@ impl PyGame {
             return Ok(actions_list.into());
         }
         
+        // Check action limit - if player has taken 2 actions, only Pass is valid
+        if !self.game.can_take_action() {
+            // Only Pass action is valid when action limit reached
+            let pass_action = PyAction::from_rust_action(&Action::Pass);
+            actions_list.append(pass_action.into_py(py))?;
+            return Ok(actions_list.into());
+        }
+        
         let player_id = match &self.game.active_player_id {
             Some(id) => id.clone(),
             None => return Ok(actions_list.into()),
@@ -361,6 +369,54 @@ impl PyGame {
             self.game.active_player_id = Some(self.game.players[0].id.clone());
         }
         Ok(())
+    }
+
+    /// Automatically complete research phase by selecting first available options
+    /// Useful for testing and RL training
+    fn auto_complete_research_phase(&mut self) -> PyResult<()> {
+        self.game.auto_complete_research_phase()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e))
+    }
+
+    /// Try to advance to next phase if conditions are met
+    /// Returns True if phase was advanced, False if conditions not met
+    fn try_advance_phase(&mut self) -> PyResult<bool> {
+        self.game.try_advance_phase()
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e))
+    }
+
+    /// Get number of actions taken by current active player this turn
+    fn get_actions_taken_this_turn(&self) -> u32 {
+        self.game.actions_taken_this_turn()
+    }
+
+    /// Check if current player can take more actions
+    fn can_take_action(&self) -> bool {
+        self.game.can_take_action()
+    }
+
+    /// Run a full game cycle: try to advance phases automatically until action phase or end
+    /// Returns the current phase after progression
+    fn run_game_cycle(&mut self) -> PyResult<String> {
+        // Try to advance phases until we reach Action phase or can't advance further
+        loop {
+            match self.game.try_advance_phase() {
+                Ok(true) => {
+                    // Phase was advanced, continue
+                    continue;
+                }
+                Ok(false) => {
+                    // Can't advance further, return current phase
+                    break;
+                }
+                Err(e) => {
+                    // Error occurred, return it
+                    return Err(PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e));
+                }
+            }
+        }
+        
+        Ok(format!("{:?}", self.game.phase))
     }
 
     /// Reset the game (for testing)
