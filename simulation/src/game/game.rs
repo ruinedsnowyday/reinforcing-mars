@@ -108,7 +108,8 @@ impl Game {
             .into_iter()
             .enumerate()
             .map(|(i, name)| {
-                let mut player = Player::new(format!("p{}", i + 1), name);
+                // Use player name as ID for Python API compatibility
+                let mut player = Player::new(name.clone(), name);
                 
                 // Solo mode: player starts with 14 TR instead of 20
                 if solo_mode {

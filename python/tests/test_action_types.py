@@ -94,7 +94,7 @@ def test_complex_payment():
         PyPaymentMethod("MegaCredits", 5),
         PyPaymentMethod("Steel", 2),
     ]
-    payment.reserve.megacredits = 3
+    payment.set_reserve_megacredits(3)
     
     assert len(payment.methods) == 2
     assert payment.reserve.megacredits == 3

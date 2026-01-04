@@ -194,6 +194,31 @@ impl PyPayment {
             reserve: PyPaymentReserve::new(),
         }
     }
+
+    /// Set reserve megacredits
+    fn set_reserve_megacredits(&mut self, amount: u32) {
+        self.reserve.megacredits = amount;
+    }
+
+    /// Set reserve steel
+    fn set_reserve_steel(&mut self, amount: u32) {
+        self.reserve.steel = amount;
+    }
+
+    /// Set reserve titanium
+    fn set_reserve_titanium(&mut self, amount: u32) {
+        self.reserve.titanium = amount;
+    }
+
+    /// Set reserve heat
+    fn set_reserve_heat(&mut self, amount: u32) {
+        self.reserve.heat = amount;
+    }
+
+    /// Set reserve plants
+    fn set_reserve_plants(&mut self, amount: u32) {
+        self.reserve.plants = amount;
+    }
 }
 
 impl PyPayment {

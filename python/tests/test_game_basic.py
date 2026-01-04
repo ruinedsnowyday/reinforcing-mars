@@ -87,6 +87,7 @@ def test_get_reward():
 def test_get_valid_actions():
     """Test getting valid actions"""
     game = PyGame.new(num_players=2, seed=12345)
+    game.advance_to_action_phase()
     actions = game.get_valid_actions()
     
     assert actions is not None
@@ -98,6 +99,7 @@ def test_get_valid_actions():
 def test_step_with_pass():
     """Test executing a Pass action"""
     game = PyGame.new(num_players=2, seed=12345)
+    game.advance_to_action_phase()
     
     # Create a Pass action
     action = PyAction("Pass")

@@ -351,6 +351,18 @@ impl PyGame {
         }
     }
 
+    /// Advance game to Action phase (for testing)
+    /// This skips all setup phases and sets the game directly to Action phase
+    fn advance_to_action_phase(&mut self) -> PyResult<()> {
+        use crate::game::phase::Phase;
+        self.game.phase = Phase::Action;
+        // Ensure there's an active player
+        if self.game.active_player_id.is_none() && !self.game.players.is_empty() {
+            self.game.active_player_id = Some(self.game.players[0].id.clone());
+        }
+        Ok(())
+    }
+
     /// Reset the game (for testing)
     fn reset(&mut self, seed: Option<u64>) -> PyResult<()> {
         let new_seed = seed.unwrap_or(self.game.rng_seed);
