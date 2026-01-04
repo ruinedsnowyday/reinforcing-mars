@@ -20,7 +20,12 @@ impl CardPlay {
             return Err(format!("Card {} not in hand", card.id));
         }
 
-        // 2. Validate payment covers card cost
+        // 2. Check card requirements
+        if let Some(requirements) = &card.requirements {
+            requirements.satisfies(player, game)?;
+        }
+
+        // 3. Validate payment covers card cost
         let card_cost = card.get_cost();
         let is_building_tag = card.has_tag(crate::player::tags::Tag::Building);
         let is_space_tag = card.has_tag(crate::player::tags::Tag::Space);
@@ -29,7 +34,7 @@ impl CardPlay {
             return Err(format!("Insufficient payment: need {} M€, paying {} M€", card_cost, total_paid));
         }
 
-        // 3. Apply payment (deduct resources)
+        // 4. Apply payment (deduct resources)
         // Use validate_payment to check, then manually deduct
         crate::actions::action_executor::ActionExecutor::validate_payment(payment, player, is_building_tag, is_space_tag)?;
         // Apply payment manually
@@ -53,21 +58,21 @@ impl CardPlay {
             }
         }
 
-        // 4. Move card from hand to played
+        // 5. Move card from hand to played
         player.remove_card_from_hand(&card.id);
         player.add_played_card(card.id.clone());
 
-        // 5. Add card tags to player
+        // 6. Add card tags to player
         for tag in &card.tags {
             player.tags.add(*tag, 1);
         }
 
-        // 6. Execute card behavior (if present)
+        // 7. Execute card behavior (if present)
         if let Some(behavior) = &card.behavior {
             BehaviorExecutor::execute(behavior, player, game)?;
         }
 
-        // 7. Call trait methods
+        // 8. Call trait methods
         CardCustomization::on_card_played(card, player, game)?;
 
         Ok(())

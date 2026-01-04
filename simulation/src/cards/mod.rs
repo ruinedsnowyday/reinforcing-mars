@@ -7,6 +7,8 @@ pub mod card;
 pub mod traits;
 pub mod card_registry;
 pub mod card_play;
+pub mod base;
+pub mod requirements;
 
 pub use card_type::CardType;
 pub use minimal_card::{CardId, MinimalCard};

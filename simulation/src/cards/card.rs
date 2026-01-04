@@ -26,9 +26,8 @@ pub struct Card {
     pub resource_type: Option<CardResource>,
     /// Victory points (if any)
     pub victory_points: Option<i32>,
-    /// Card requirements (simplified for Phase 5 - will be expanded later)
-    /// For now, just store as a string description
-    pub requirements: Option<String>,
+    /// Card requirements
+    pub requirements: Option<crate::cards::requirements::CardRequirements>,
 }
 
 impl Card {
@@ -82,7 +81,7 @@ impl Card {
     }
 
     /// Set requirements
-    pub fn with_requirements(mut self, requirements: String) -> Self {
+    pub fn with_requirements(mut self, requirements: crate::cards::requirements::CardRequirements) -> Self {
         self.requirements = Some(requirements);
         self
     }
