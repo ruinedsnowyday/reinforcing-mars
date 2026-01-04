@@ -8,6 +8,8 @@ pub mod cards;
 pub mod actions;
 pub mod deferred;
 pub mod utils;
+
+#[cfg(feature = "pyo3")]
 pub mod python;
 
 // Python module initialization

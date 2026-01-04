@@ -1,3 +1,4 @@
+#![cfg(feature = "pyo3")]
 pub mod types;
 pub mod game_wrapper;
 pub mod player_wrapper;
